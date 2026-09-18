@@ -86,7 +86,7 @@ func run(args []string) error {
 
 	switch cmd, rest := global.Arg(0), global.Args()[1:]; cmd {
 	case "tell":
-		return runTell(ctx, s, cfg, rest)
+		return runTell(ctx, s, cfg, os.Stdout, rest)
 	case "log":
 		return runLog(ctx, s, cfg, os.Stdout)
 	default:
@@ -94,9 +94,13 @@ func run(args []string) error {
 	}
 }
 
-func runTell(ctx context.Context, s *store.Store, cfg Config, rest []string) error {
-	if len(rest) != 1 {
-		return errors.New("invalid arguments")
+func runTell(ctx context.Context, s *store.Store, cfg Config, out io.Writer, rest []string) error {
+	if len(rest) == 0 {
+		return errors.New("no message")
+	}
+
+	if len(rest) > 1 {
+		return errors.New("too many arguments")
 	}
 
 	if cfg.Identity == "" {
@@ -108,7 +112,7 @@ func runTell(ctx context.Context, s *store.Store, cfg Config, rest []string) err
 		return fmt.Errorf("unable to tell: %w", err)
 	}
 
-	fmt.Printf("%d\n", id)
+	fmt.Fprintf(out, "%d\n", id)
 
 	return nil
 }
