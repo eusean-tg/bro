@@ -50,14 +50,25 @@ The expensive part is the wake-up, not the bytes.
 
 ## Data model
 
-One global `seq`, one cursor per mailbox. A single `AUTOINCREMENT` column gives a
-monotonic sequence across all workspaces; per-workspace it has gaps, which is
-harmless, and it is a real total order, which is the point. "Did worker-3's update
-land before my read?" becomes an integer comparison.
+One global `id`, one cursor per mailbox. A single `AUTOINCREMENT` column gives a
+monotonic identifier across all workspaces, and it is a real total order, which is
+the point. "Did worker-3's update land before my read?" becomes an integer
+comparison.
+
+`id` orders and identifies. It does not count. Within one workspace the values are
+sparse, because every other workspace's traffic consumes ids from the same sequence,
+so the distance between two ids says nothing about how many messages lie between
+them. `unread_count` is the only measure of backlog, and it is a `COUNT(*)` over the
+same filter the reader applies, so gaps cannot distort it. Arithmetic on two ids is
+a bug.
+
+For a transcript that reads with contiguous numbering, derive it at query time —
+`ROW_NUMBER() OVER (ORDER BY id)` within the workspace filter — rather than storing
+a second column that has to be kept consistent with the first.
 
 ```sql
 CREATE TABLE messages (
-  seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace  TEXT    NOT NULL,
   sender     TEXT    NOT NULL,
   kind       TEXT    NOT NULL DEFAULT 'note',   -- 'note' | 'control'
@@ -65,13 +76,13 @@ CREATE TABLE messages (
   created_at INTEGER NOT NULL
 );
 
-CREATE INDEX messages_ws_seq ON messages(workspace, seq);
+CREATE INDEX messages_ws_id ON messages(workspace, id);
 
 -- A row per addressed mailbox. No rows means "to the room".
 CREATE TABLE mentions (
-  seq     INTEGER NOT NULL REFERENCES messages(seq) ON DELETE CASCADE,
-  mailbox TEXT    NOT NULL,
-  PRIMARY KEY (seq, mailbox)
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  mailbox    TEXT    NOT NULL,
+  PRIMARY KEY (message_id, mailbox)
 );
 
 CREATE TABLE mailboxes (
@@ -85,21 +96,21 @@ CREATE TABLE mailboxes (
 
 CREATE TABLE workspaces (
   name       TEXT    PRIMARY KEY,
-  closed_seq INTEGER                        -- seq of the unit-complete message
+  closed_id  INTEGER                        -- id of the unit-complete message
 );
 ```
 
 Fan out at read, not at write. One row per `tell` regardless of recipient count:
 
 ```sql
-SELECT m.seq, m.sender, m.kind, m.body, m.created_at,
+SELECT m.id, m.sender, m.kind, m.body, m.created_at,
        EXISTS(SELECT 1 FROM mentions x
-              WHERE x.seq = m.seq AND x.mailbox = :me) AS mentioned
+              WHERE x.message_id = m.id AND x.mailbox = :me) AS mentioned
 FROM messages m
 WHERE m.workspace = :ws
-  AND m.seq > :cursor
+  AND m.id > :cursor
   AND m.sender != :me
-ORDER BY m.seq;
+ORDER BY m.id;
 ```
 
 A sender never sees its own message. Ten workers each announcing "done" and then each
@@ -108,25 +119,33 @@ waking on their own announcement is a silly way to burn ten turns.
 ### Workspaces
 
 Mailboxes are keyed on a workspace so two concurrent orchestrations don't collide on
-`worker-1`. Derive it from `$BRO_WORKSPACE`, falling back to the git root, falling
-back to cwd.
+`worker-1`. The workspace is explicit: `$BRO_WORKSPACE`, with `--workspace` as an
+override. An unset workspace is an error.
+
+Inference fails silently here. Two workers that derive different workspaces do not
+collide and do not error — they simply never see each other, which is
+indistinguishable from a run where nobody has posted yet. A misconfiguration that
+looks exactly like quiet cannot be diagnosed from inside the run, so the workspace is
+named or the command refuses to run.
 
 ### Termination
 
-`bro close` writes a `control` message and sets `workspaces.closed_seq`. A waiter
-compares its cursor against `closed_seq` **before** deciding to block. Because the
+`bro close` writes a `control` message and sets `workspaces.closed_id`. A waiter
+compares its cursor against `closed_id` **before** deciding to block. Because the
 cursor and the marker live in the same total order, the comparison and the decision
 happen in the same call under the same lock, so a worker that finishes just after the
 close still sees it and exits instead of blocking forever.
 
 ### Late registrants
 
-A mailbox registered at time T starts with its cursor at the current `seq`, so it does
-not see earlier traffic.
+A mailbox registered at time T starts with its cursor at the highest `id` in its
+workspace, so it does not see earlier traffic.
 
 ## CLI surface
 
 ```
+bro [--as NAME] [--workspace WS] <command> [flags] [ARG]
+
 bro register [-n NAME] [-d DESC]     # random name if omitted
 bro list                             # mailboxes in this workspace
 bro tell [--to a,b] [--kind control] MESSAGE
@@ -137,12 +156,16 @@ bro unregister [-n NAME] [--force]
 bro daemon                           # usually spawned by the client
 ```
 
-Identity comes from `$BRO_IDENTITY`, with `--as` as an override. A flag required on
-every invocation is a flag an agent eventually forgets.
+Identity comes from `$BRO_IDENTITY`, with `--as` as an override; the workspace comes
+from `$BRO_WORKSPACE`, with `--workspace`. A flag required on every invocation is a
+flag an agent eventually forgets, so `SubagentStart` sets both at spawn and no agent
+types either.
 
 `bro pull` with no flags returns everything after the cursor and advances it. Every
-response carries `latest_seq` and `unread_count`, so a caller learns backlog depth
-without a second call.
+response carries `latest_id` and `unread_count`, so a caller learns backlog depth
+without a second call. `latest_id` is the highest `id` in the reader's workspace: a
+cursor equal to it means caught up. The global maximum is meaningless to a single
+mailbox and is never reported.
 
 ### Exit codes
 

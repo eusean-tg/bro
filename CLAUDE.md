@@ -18,6 +18,11 @@ The unit to hand over is a short snippet that demonstrates one idea **on an unre
 toy type**. The translation from the generic form to this repo's problem is the
 exercise.
 
+Before the owner writes a new file or layer, hand over the decomposition first: each
+function's name, signature, single responsibility, and what it must not do. The owner
+does not yet carry the map of which pieces a Go program of this shape has, and
+withholding the map is not teaching — it is the same mistake as withholding an idiom.
+
 Do this:
 
 - Demonstrate on something unconnected to the current task — a `Widget`, a config
@@ -140,6 +145,8 @@ These are decided. Do not reopen them in reviews or suggestions.
   permissions are the only real boundary.
 - **`bro` is advisory.** It reports that a file was touched. It does not lock, claim,
   or lease anything.
+- **The workspace is explicit**, from `$BRO_WORKSPACE` or `--workspace`. It is never
+  inferred from the git root or cwd; an unset workspace is an error.
 
 ## Scope
 
