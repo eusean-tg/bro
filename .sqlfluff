@@ -1,0 +1,12 @@
+# SQLite is the dialect: AUTOINCREMENT and SQLite's CREATE TABLE spelling do not
+# parse under ansi, which reports the whole file as one unparsable section.
+[sqlfluff]
+dialect = sqlite
+
+# Columns in schema.sql are padded so types and constraints line up, which makes
+# a wide table readable at a glance. LT01 requires single spacing and would
+# collapse that alignment.
+exclude_rules = LT01
+
+[sqlfluff:indentation]
+tab_space_size = 2
