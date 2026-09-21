@@ -214,11 +214,38 @@ func runPull(
 	out io.Writer,
 	rest []string,
 ) error {
+	pull := flag.NewFlagSet("pull", flag.ContinueOnError)
+	snc := pull.Int64("since", 0, "since id N")
+	lst := pull.Int("last", 0, "the N most recent")
+	pk := pull.Bool("peek", false, "do not advance the cursor")
+
+	if err := pull.Parse(rest); err != nil {
+		return err
+	}
+
+	var opts store.PullOptions
+	set := map[string]bool{}
+	pull.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+	if set["since"] && set["last"] {
+		return errors.New("since and last cannot be used together")
+	}
+
+	if set["since"] {
+		opts.Since = snc
+	}
+	if set["last"] {
+		opts.Last = *lst
+	}
+	if set["peek"] {
+		opts.Peek = *pk
+	}
+
 	if cfg.Identity == "" {
 		return errors.New("pull requires identity")
 	}
 
-	msgs, err := s.Pull(ctx, cfg.Workspace, cfg.Identity)
+	msgs, err := s.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
 	if err != nil {
 		return fmt.Errorf("pull messages: %w", err)
 	}

@@ -164,10 +164,17 @@ func fetchMailbox(
 	return &mb, nil
 }
 
+type PullOptions struct {
+	Since *int64 // nil: start form the cursor
+	Last  int    // 0: no limit
+	Peek  bool   // false: advance the cursor
+}
+
 func (s *Store) Pull(
 	ctx context.Context,
 	ws string,
 	me string,
+	opts PullOptions,
 ) ([]Message, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -180,15 +187,40 @@ func (s *Store) Pull(
 		return nil, err
 	}
 
-	rows, err := tx.QueryContext(
-		ctx,
-		`SELECT id, sender, kind, body, created_at FROM messages WHERE workspace = ? AND id > ? AND sender != ? ORDER BY id ASC`,
-		ws,
-		mb.Cursor,
-		me,
-	)
-	if err != nil {
-		return nil, err
+	cursor := mb.Cursor
+	if opts.Since != nil {
+		cursor = *opts.Since
+	}
+
+	var rows *sql.Rows
+	if opts.Last > 0 {
+		rows, err = tx.QueryContext(
+			ctx,
+			`SELECT id, sender, kind, body, created_at FROM (
+				SELECT id, sender, kind, body, created_at FROM messages
+				WHERE workspace = ? AND sender != ?
+				ORDER BY id DESC LIMIT ?
+			) ORDER BY id ASC`,
+			ws,
+			me,
+			opts.Last,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		rows, err = tx.QueryContext(
+			ctx,
+			`SELECT id, sender, kind, body, created_at FROM
+			messages WHERE workspace = ? AND id > ? AND sender != ? 
+			ORDER BY id ASC`,
+			ws,
+			cursor,
+			me,
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	out := make([]Message, 0)
@@ -204,9 +236,21 @@ func (s *Store) Pull(
 		return nil, rows.Err()
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE mailboxes SET cursor = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE workspace = ?) WHERE workspace = ? AND name = ?`, ws, ws, me); err != nil {
-		return nil, err
+	plain := !opts.Peek && opts.Since == nil && opts.Last == 0
+	if plain {
+		if _, err := tx.ExecContext(
+			ctx,
+			`UPDATE mailboxes SET cursor = (
+				SELECT COALESCE(MAX(id), 0) FROM messages WHERE workspace = ?
+			) WHERE workspace = ? AND name = ?`,
+			ws,
+			ws,
+			me,
+		); err != nil {
+			return nil, err
+		}
 	}
+
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}

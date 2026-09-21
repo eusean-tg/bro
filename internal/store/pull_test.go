@@ -19,7 +19,7 @@ func TestPullReturnsMessagesAfterTheCursor(t *testing.T) {
 		}
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader")
+	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestPullExcludesTheReadersOwnMessages(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader")
+	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestPullAdvancesTheCursorSoASecondPullIsEmpty(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	first, err := s.Pull(ctx, "alpha", "reader")
+	first, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("first Pull: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestPullAdvancesTheCursorSoASecondPullIsEmpty(t *testing.T) {
 		t.Fatalf("first Pull returned %d messages, want 1", len(first))
 	}
 
-	second, err := s.Pull(ctx, "alpha", "reader")
+	second, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("second Pull: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestPullAdvancesPastTheReadersOwnMessages(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	if _, err := s.Pull(ctx, "alpha", "reader"); err != nil {
+	if _, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{}); err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func TestPullIgnoresTrafficFromBeforeRegistration(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "latecomer")
+	msgs, err := s.Pull(ctx, "alpha", "latecomer", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestPullIsScopedToOneWorkspace(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader")
+	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestPullIsScopedToOneWorkspace(t *testing.T) {
 func TestPullRejectsAnUnknownMailbox(t *testing.T) {
 	s := newStore(t)
 
-	if _, err := s.Pull(t.Context(), "alpha", "ghost"); !errors.Is(err, store.ErrNoMailbox) {
+	if _, err := s.Pull(t.Context(), "alpha", "ghost", store.PullOptions{}); !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("Pull error = %v, want ErrNoMailbox", err)
 	}
 }
