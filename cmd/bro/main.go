@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,12 +90,20 @@ func run(args []string) error {
 		return runTell(ctx, s, cfg, os.Stdout, rest)
 	case "log":
 		return runLog(ctx, s, cfg, os.Stdout)
+	case "register":
+		return runRegister(ctx, s, cfg, os.Stdout, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 }
 
-func runTell(ctx context.Context, s *store.Store, cfg Config, out io.Writer, rest []string) error {
+func runTell(
+	ctx context.Context,
+	s *store.Store,
+	cfg Config,
+	out io.Writer,
+	rest []string,
+) error {
 	if len(rest) == 0 {
 		return errors.New("no message")
 	}
@@ -112,7 +121,7 @@ func runTell(ctx context.Context, s *store.Store, cfg Config, out io.Writer, res
 		return fmt.Errorf("unable to tell: %w", err)
 	}
 
-	fmt.Fprintf(out, "%d\n", id)
+	_, _ = fmt.Fprintf(out, "%d\n", id)
 
 	return nil
 }
@@ -157,6 +166,37 @@ func runLog(ctx context.Context, s *store.Store, cfg Config, out io.Writer) erro
 			_, _ = fmt.Fprintf(out, "%s> %s\n", prefix, line)
 		}
 	}
+
+	return nil
+}
+
+func randomName() string {
+	return fmt.Sprintf("worker-%04x", rand.N(0x10000))
+}
+
+func runRegister(
+	ctx context.Context,
+	s *store.Store,
+	cfg Config,
+	out io.Writer,
+	rest []string,
+) error {
+	register := flag.NewFlagSet("register", flag.ContinueOnError)
+	n := register.String("n", "", "name for mailbox")
+	d := register.String("d", "", "short description for who the receiver")
+
+	if err := register.Parse(rest); err != nil {
+		return err
+	}
+
+	name := cmp.Or(*n, cfg.Identity, randomName())
+
+	mb, err := s.Register(ctx, cfg.Workspace, name, *d)
+	if err != nil {
+		return fmt.Errorf("register mailbox: %w", err)
+	}
+
+	_, _ = fmt.Fprintln(out, mb.Name)
 
 	return nil
 }

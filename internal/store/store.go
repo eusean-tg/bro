@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,6 +27,32 @@ type Message struct {
 	CreatedAt int64
 }
 
+var (
+	ErrMailboxExists = errors.New("mailbox already exists")
+	ErrNoMailbox     = errors.New("mailbox doesn't exist")
+)
+
+type Mailbox struct {
+	Name        string
+	Description string
+	Cursor      int64
+	CreatedAt   int64
+}
+
+func Open(path string) (*Store, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+
+	if _, err := db.ExecContext(context.Background(), schemaSQL); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("apply schema: %w", err)
+	}
+
+	return &Store{db: db, Now: time.Now}, nil
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }
@@ -37,6 +64,11 @@ func (s *Store) Tell(
 	body string,
 ) (int64, error) {
 	var id int64
+
+	_, err := s.Mailbox(ctx, ws, sender)
+	if err != nil {
+		return 0, fmt.Errorf("sender mailbox: %w", err)
+	}
 
 	if err := s.db.QueryRowContext(
 		ctx,
@@ -68,16 +100,53 @@ func (s *Store) Log(ctx context.Context, ws string) ([]Message, error) {
 	return out, rows.Err()
 }
 
-func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		return nil, fmt.Errorf("open sqlite: %w", err)
+func (s *Store) Register(
+	ctx context.Context,
+	ws string,
+	name string,
+	desc string,
+) (*Mailbox, error) {
+	var mb Mailbox
+
+	err := s.db.QueryRowContext(
+		ctx,
+		`INSERT INTO mailboxes (workspace, name, description, cursor, created_at) VALUES (?,?,?,COALESCE((SELECT MAX(id) FROM messages WHERE workspace = ?), 0),?) ON CONFLICT (workspace,name) DO NOTHING RETURNING name, description, cursor, created_at`,
+		ws,
+		name,
+		desc,
+		ws,
+		s.Now().Unix(),
+	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt)
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, fmt.Errorf("register %s: %w", name, ErrMailboxExists)
+	case err != nil:
+		return nil, fmt.Errorf("insert mailbox: %w", err)
 	}
 
-	if _, err := db.ExecContext(context.Background(), schemaSQL); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
+	return &mb, nil
+}
+
+func (s *Store) Mailbox(
+	ctx context.Context,
+	ws string,
+	name string,
+) (*Mailbox, error) {
+	var mb Mailbox
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT name, description, cursor, created_at FROM mailboxes WHERE name = ? AND workspace = ?`,
+		name,
+		ws,
+	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt)
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil, fmt.Errorf("mailbox %s: %w", name, ErrNoMailbox)
+	case err != nil:
+		return nil, fmt.Errorf("lookup mailbox: %w", err)
 	}
 
-	return &Store{db: db, Now: time.Now}, nil
+	return &mb, nil
 }

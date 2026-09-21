@@ -10,6 +10,9 @@ import (
 func TestRunTellWritesIDAndStoresMessage(t *testing.T) {
 	s := seeded(t)
 	cfg := Config{Identity: "worker-1", Workspace: "alpha"}
+	if _, err := s.Register(t.Context(), cfg.Workspace, cfg.Identity, ""); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	var out bytes.Buffer
 	if err := runTell(t.Context(), s, cfg, &out, []string{"started on auth"}); err != nil {
@@ -46,8 +49,12 @@ func TestRunTellWritesIDAndStoresMessage(t *testing.T) {
 func TestRunTellWritesToTheGivenWorkspace(t *testing.T) {
 	s := seeded(t)
 
-	var out bytes.Buffer
 	cfg := Config{Identity: "worker-1", Workspace: "alpha"}
+	if _, err := s.Register(t.Context(), cfg.Workspace, cfg.Identity, ""); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	var out bytes.Buffer
 	if err := runTell(t.Context(), s, cfg, &out, []string{"for alpha only"}); err != nil {
 		t.Fatalf("runTell: %v", err)
 	}

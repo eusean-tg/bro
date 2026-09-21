@@ -30,6 +30,14 @@ func newStore(t *testing.T) *store.Store {
 	return s
 }
 
+// register creates a mailbox so that Tell will accept it as a sender.
+func register(t *testing.T, s *store.Store, ws, name string) {
+	t.Helper()
+	if _, err := s.Register(t.Context(), ws, name, ""); err != nil {
+		t.Fatalf("Register(%s/%s): %v", ws, name, err)
+	}
+}
+
 func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bro.db")
 
@@ -68,6 +76,9 @@ func TestTellReturnsIncreasingID(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()
 
+	register(t, s, "ws", "worker-1")
+	register(t, s, "ws", "worker-2")
+
 	first, err := s.Tell(ctx, "ws", "worker-1", "started on auth")
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
@@ -88,6 +99,8 @@ func TestTellReturnsIncreasingID(t *testing.T) {
 func TestLogReturnsMessagesInIDOrder(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()
+
+	register(t, s, "ws", "worker-1")
 
 	bodies := []string{"first", "second", "third"}
 	for _, body := range bodies {
@@ -118,6 +131,8 @@ func TestLogReturnsMessagesInIDOrder(t *testing.T) {
 func TestTellRecordsSenderKindAndInjectedTime(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()
+
+	register(t, s, "ws", "worker-3")
 
 	if _, err := s.Tell(ctx, "ws", "worker-3", "refactored auth middleware"); err != nil {
 		t.Fatalf("Tell: %v", err)
@@ -151,6 +166,9 @@ func TestTellRecordsSenderKindAndInjectedTime(t *testing.T) {
 func TestLogIsScopedToOneWorkspace(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()
+
+	register(t, s, "alpha", "worker-1")
+	register(t, s, "beta", "worker-2")
 
 	if _, err := s.Tell(ctx, "alpha", "worker-1", "in alpha"); err != nil {
 		t.Fatalf("Tell: %v", err)

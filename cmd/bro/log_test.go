@@ -20,7 +20,14 @@ func seeded(t *testing.T, msgs ...[3]string) *store.Store {
 	}
 	t.Cleanup(func() { s.Close() })
 
+	registered := map[[2]string]bool{}
 	for _, m := range msgs { // {workspace, sender, body}
+		if key := [2]string{m[0], m[1]}; !registered[key] {
+			if _, err := s.Register(t.Context(), m[0], m[1], ""); err != nil {
+				t.Fatalf("Register(%s/%s): %v", m[0], m[1], err)
+			}
+			registered[key] = true
+		}
 		if _, err := s.Tell(t.Context(), m[0], m[1], m[2]); err != nil {
 			t.Fatalf("Tell(%v): %v", m, err)
 		}
