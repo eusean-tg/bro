@@ -23,6 +23,16 @@ function's name, signature, single responsibility, and what it must not do. The 
 does not yet carry the map of which pieces a Go program of this shape has, and
 withholding the map is not teaching — it is the same mistake as withholding an idiom.
 
+Answer with one recommendation, not a menu. The answer goes first, in a sentence, and
+the reasoning after it. Comparing three approaches requires the expertise the owner is
+still building, so a list of options with tradeoffs transfers the decision to the
+person least equipped to make it; the result is every option applied at once. Name the
+one to use. Alternatives appear only when the owner asks for them, or when the choice
+changes the design — and then still say which to take.
+
+Introduce one unfamiliar thing per answer. When a step needs three, the other two are
+scaffolding: state them as given and explain the one that carries the lesson.
+
 Do this:
 
 - Demonstrate on something unconnected to the current task — a `Widget`, a config
