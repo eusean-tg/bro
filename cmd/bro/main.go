@@ -92,6 +92,8 @@ func run(args []string) error {
 		return runLog(ctx, s, cfg, os.Stdout)
 	case "register":
 		return runRegister(ctx, s, cfg, os.Stdout, rest)
+	case "pull":
+		return runPull(ctx, s, cfg, os.Stdout, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -126,12 +128,7 @@ func runTell(
 	return nil
 }
 
-func runLog(ctx context.Context, s *store.Store, cfg Config, out io.Writer) error {
-	msgs, err := s.Log(ctx, cfg.Workspace)
-	if err != nil {
-		return fmt.Errorf("log messages: %w", err)
-	}
-
+func printMessages(out io.Writer, msgs []store.Message) {
 	var w int
 
 	for _, m := range msgs {
@@ -166,6 +163,15 @@ func runLog(ctx context.Context, s *store.Store, cfg Config, out io.Writer) erro
 			_, _ = fmt.Fprintf(out, "%s> %s\n", prefix, line)
 		}
 	}
+}
+
+func runLog(ctx context.Context, s *store.Store, cfg Config, out io.Writer) error {
+	msgs, err := s.Log(ctx, cfg.Workspace)
+	if err != nil {
+		return fmt.Errorf("log messages: %w", err)
+	}
+
+	printMessages(out, msgs)
 
 	return nil
 }
@@ -197,6 +203,27 @@ func runRegister(
 	}
 
 	_, _ = fmt.Fprintln(out, mb.Name)
+
+	return nil
+}
+
+func runPull(
+	ctx context.Context,
+	s *store.Store,
+	cfg Config,
+	out io.Writer,
+	rest []string,
+) error {
+	if cfg.Identity == "" {
+		return errors.New("pull requires identity")
+	}
+
+	msgs, err := s.Pull(ctx, cfg.Workspace, cfg.Identity)
+	if err != nil {
+		return fmt.Errorf("pull messages: %w", err)
+	}
+
+	printMessages(out, msgs)
 
 	return nil
 }

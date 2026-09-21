@@ -14,6 +14,10 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 type Store struct {
 	db  *sql.DB
 	Now func() time.Time
@@ -65,7 +69,7 @@ func (s *Store) Tell(
 ) (int64, error) {
 	var id int64
 
-	_, err := s.Mailbox(ctx, ws, sender)
+	_, err := fetchMailbox(ctx, s.db, ws, sender)
 	if err != nil {
 		return 0, fmt.Errorf("sender mailbox: %w", err)
 	}
@@ -133,8 +137,17 @@ func (s *Store) Mailbox(
 	ws string,
 	name string,
 ) (*Mailbox, error) {
+	return fetchMailbox(ctx, s.db, ws, name)
+}
+
+func fetchMailbox(
+	ctx context.Context,
+	q querier,
+	ws string,
+	name string,
+) (*Mailbox, error) {
 	var mb Mailbox
-	err := s.db.QueryRowContext(
+	err := q.QueryRowContext(
 		ctx,
 		`SELECT name, description, cursor, created_at FROM mailboxes WHERE name = ? AND workspace = ?`,
 		name,
@@ -149,4 +162,54 @@ func (s *Store) Mailbox(
 	}
 
 	return &mb, nil
+}
+
+func (s *Store) Pull(
+	ctx context.Context,
+	ws string,
+	me string,
+) ([]Message, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	mb, err := fetchMailbox(ctx, tx, ws, me)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := tx.QueryContext(
+		ctx,
+		`SELECT id, sender, kind, body, created_at FROM messages WHERE workspace = ? AND id > ? AND sender != ? ORDER BY id ASC`,
+		ws,
+		mb.Cursor,
+		me,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Message, 0)
+	for rows.Next() {
+		var m Message
+		if err = rows.Scan(&m.ID, &m.Sender, &m.Kind, &m.Body, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	_ = rows.Close()
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE mailboxes SET cursor = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE workspace = ?) WHERE workspace = ? AND name = ?`, ws, ws, me); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
 }
