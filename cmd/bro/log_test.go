@@ -28,7 +28,7 @@ func seeded(t *testing.T, msgs ...[3]string) *store.Store {
 			}
 			registered[key] = true
 		}
-		if _, err := s.Tell(t.Context(), m[0], m[1], m[2]); err != nil {
+		if _, err := s.Tell(t.Context(), m[0], m[1], m[2], nil); err != nil {
 			t.Fatalf("Tell(%v): %v", m, err)
 		}
 	}

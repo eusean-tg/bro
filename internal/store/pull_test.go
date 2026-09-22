@@ -14,7 +14,7 @@ func TestPullReturnsMessagesAfterTheCursor(t *testing.T) {
 	register(t, s, "alpha", "writer")
 
 	for _, body := range []string{"first", "second"} {
-		if _, err := s.Tell(ctx, "alpha", "writer", body); err != nil {
+		if _, err := s.Tell(ctx, "alpha", "writer", body, nil); err != nil {
 			t.Fatalf("Tell(%q): %v", body, err)
 		}
 	}
@@ -37,10 +37,10 @@ func TestPullExcludesTheReadersOwnMessages(t *testing.T) {
 	register(t, s, "alpha", "reader")
 	register(t, s, "alpha", "writer")
 
-	if _, err := s.Tell(ctx, "alpha", "reader", "my own announcement"); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "reader", "my own announcement", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
-	if _, err := s.Tell(ctx, "alpha", "writer", "someone else's"); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "someone else's", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -62,7 +62,7 @@ func TestPullAdvancesTheCursorSoASecondPullIsEmpty(t *testing.T) {
 	register(t, s, "alpha", "reader")
 	register(t, s, "alpha", "writer")
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "only message"); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "only message", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestPullAdvancesPastTheReadersOwnMessages(t *testing.T) {
 	// The reader is the only sender, so Pull returns nothing — but the cursor
 	// must still move past the message. A cursor that stalls on the reader's
 	// own traffic never reports the mailbox as caught up.
-	id, err := s.Tell(ctx, "alpha", "reader", "my own announcement")
+	id, err := s.Tell(ctx, "alpha", "reader", "my own announcement", nil)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -115,14 +115,14 @@ func TestPullIgnoresTrafficFromBeforeRegistration(t *testing.T) {
 	register(t, s, "alpha", "writer")
 
 	for _, body := range []string{"before 1", "before 2"} {
-		if _, err := s.Tell(ctx, "alpha", "writer", body); err != nil {
+		if _, err := s.Tell(ctx, "alpha", "writer", body, nil); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}
 
 	register(t, s, "alpha", "latecomer")
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "after"); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "after", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -144,7 +144,7 @@ func TestPullIsScopedToOneWorkspace(t *testing.T) {
 	register(t, s, "alpha", "reader")
 	register(t, s, "beta", "writer")
 
-	if _, err := s.Tell(ctx, "beta", "writer", "belongs to beta"); err != nil {
+	if _, err := s.Tell(ctx, "beta", "writer", "belongs to beta", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

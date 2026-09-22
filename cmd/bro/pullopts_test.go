@@ -25,7 +25,7 @@ func TestRunPullPeekCanBeRepeated(t *testing.T) {
 	if _, err := s.Register(t.Context(), "alpha", "writer", ""); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	if _, err := s.Tell(t.Context(), "alpha", "writer", "auth done"); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "writer", "auth done", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func TestRunPullSinceReadsPastTheCursor(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 	for _, body := range []string{"one", "two"} {
-		if _, err := s.Tell(t.Context(), "alpha", "writer", body); err != nil {
+		if _, err := s.Tell(t.Context(), "alpha", "writer", body, nil); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}
@@ -81,7 +81,7 @@ func TestRunPullLastLimitsTheCount(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 	for _, body := range []string{"one", "two", "three"} {
-		if _, err := s.Tell(t.Context(), "alpha", "writer", body); err != nil {
+		if _, err := s.Tell(t.Context(), "alpha", "writer", body, nil); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}

@@ -79,11 +79,11 @@ func TestTellReturnsIncreasingID(t *testing.T) {
 	register(t, s, "ws", "worker-1")
 	register(t, s, "ws", "worker-2")
 
-	first, err := s.Tell(ctx, "ws", "worker-1", "started on auth")
+	first, err := s.Tell(ctx, "ws", "worker-1", "started on auth", nil)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
-	second, err := s.Tell(ctx, "ws", "worker-2", "started on storage")
+	second, err := s.Tell(ctx, "ws", "worker-2", "started on storage", nil)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestLogReturnsMessagesInIDOrder(t *testing.T) {
 
 	bodies := []string{"first", "second", "third"}
 	for _, body := range bodies {
-		if _, err := s.Tell(ctx, "ws", "worker-1", body); err != nil {
+		if _, err := s.Tell(ctx, "ws", "worker-1", body, nil); err != nil {
 			t.Fatalf("Tell(%q): %v", body, err)
 		}
 	}
@@ -134,7 +134,7 @@ func TestTellRecordsSenderKindAndInjectedTime(t *testing.T) {
 
 	register(t, s, "ws", "worker-3")
 
-	if _, err := s.Tell(ctx, "ws", "worker-3", "refactored auth middleware"); err != nil {
+	if _, err := s.Tell(ctx, "ws", "worker-3", "refactored auth middleware", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -170,10 +170,10 @@ func TestLogIsScopedToOneWorkspace(t *testing.T) {
 	register(t, s, "alpha", "worker-1")
 	register(t, s, "beta", "worker-2")
 
-	if _, err := s.Tell(ctx, "alpha", "worker-1", "in alpha"); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "worker-1", "in alpha", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
-	if _, err := s.Tell(ctx, "beta", "worker-2", "in beta"); err != nil {
+	if _, err := s.Tell(ctx, "beta", "worker-2", "in beta", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

@@ -106,11 +106,18 @@ func runTell(
 	out io.Writer,
 	rest []string,
 ) error {
-	if len(rest) == 0 {
+	tell := flag.NewFlagSet("tell", flag.ContinueOnError)
+	toFlag := tell.String("to", "", "name(s) for recipient, comma-separated: alice,bob")
+
+	if err := tell.Parse(rest); err != nil {
+		return err
+	}
+
+	if tell.NArg() == 0 {
 		return errors.New("no message")
 	}
 
-	if len(rest) > 1 {
+	if tell.NArg() > 1 {
 		return errors.New("too many arguments")
 	}
 
@@ -118,7 +125,12 @@ func runTell(
 		return errors.New("tell requires identity")
 	}
 
-	id, err := s.Tell(ctx, cfg.Workspace, cfg.Identity, rest[0])
+	var to []string
+	if *toFlag != "" {
+		to = strings.Split(*toFlag, ",")
+	}
+
+	id, err := s.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to)
 	if err != nil {
 		return fmt.Errorf("unable to tell: %w", err)
 	}
@@ -136,10 +148,14 @@ func printMessages(out io.Writer, msgs []store.Message) {
 	}
 
 	for _, m := range msgs {
-		marker := " "
+		marker := ""
 
 		if m.Kind == "control" {
-			marker = "*"
+			marker += "*"
+		}
+
+		if m.Mentioned {
+			marker += "@"
 		}
 
 		head := fmt.Sprintf(

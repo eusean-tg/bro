@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -16,6 +17,7 @@ var schemaSQL string
 
 type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
 type Store struct {
@@ -29,6 +31,7 @@ type Message struct {
 	Kind      string
 	Body      string
 	CreatedAt int64
+	Mentioned bool
 }
 
 var (
@@ -61,25 +64,85 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func dedupStringSlice(strings []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(strings)+1)
+
+	for _, val := range strings {
+		if _, exists := seen[val]; !exists {
+			seen[val] = struct{}{}
+			result = append(result, val)
+		}
+	}
+	return result
+}
+
 func (s *Store) Tell(
 	ctx context.Context,
 	ws string,
 	sender string,
 	body string,
+	to []string,
 ) (int64, error) {
-	var id int64
+	names := make([]string, 0)
+	names = append(names, sender)
+	names = append(names, to...)
+	names = dedupStringSlice(names)
 
-	_, err := fetchMailbox(ctx, s.db, ws, sender)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	mbs, err := fetchMailboxes(ctx, tx, ws, names)
 	if err != nil {
 		return 0, fmt.Errorf("sender mailbox: %w", err)
 	}
 
-	if err := s.db.QueryRowContext(
+	if len(mbs) != len(names) {
+		nmap := make(map[string]bool)
+		for _, n := range mbs {
+			nmap[n.Name] = true
+		}
+
+		missing := make([]string, 0)
+		for _, n := range names {
+			if ok := nmap[n]; !ok {
+				missing = append(missing, n)
+			}
+		}
+
+		return 0, fmt.Errorf(
+			"recipients %s: %w",
+			strings.Join(missing, ", "),
+			ErrNoMailbox,
+		)
+	}
+
+	var id int64
+	if err := tx.QueryRowContext(
 		ctx,
 		`INSERT INTO messages (workspace, sender, body, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
 		ws, sender, body, s.Now().Unix(),
 	).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert message: %w", err)
+	}
+
+	for _, v := range to {
+		_, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO mentions (message_id, mailbox) VALUES (?, ?)`,
+			id,
+			v,
+		)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
 	}
 
 	return id, nil
@@ -140,6 +203,43 @@ func (s *Store) Mailbox(
 	return fetchMailbox(ctx, s.db, ws, name)
 }
 
+func fetchMailboxes(
+	ctx context.Context,
+	q querier,
+	ws string,
+	names []string,
+) ([]Mailbox, error) {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(names)), ",")
+	query := `SELECT name, description, cursor, created_at FROM mailboxes WHERE workspace = ? AND name IN (` + placeholders + `)`
+
+	args := make([]any, 0, len(names)+1)
+	args = append(args, ws)
+	for _, n := range names {
+		args = append(args, n)
+	}
+
+	rows, err := q.QueryContext(
+		ctx,
+		query,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query mailboxes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Mailbox
+	for rows.Next() {
+		var mb Mailbox
+		if err := rows.Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan mailbox: %w", err)
+		}
+		out = append(out, mb)
+	}
+
+	return out, rows.Err()
+}
+
 func fetchMailbox(
 	ctx context.Context,
 	q querier,
@@ -196,11 +296,14 @@ func (s *Store) Pull(
 	if opts.Last > 0 {
 		rows, err = tx.QueryContext(
 			ctx,
-			`SELECT id, sender, kind, body, created_at FROM (
-				SELECT id, sender, kind, body, created_at FROM messages
+			`SELECT id, sender, kind, body, created_at, mentioned FROM (
+				SELECT id, sender, kind, body, created_at, EXISTS(
+					SELECT 1 FROM mentions x WHERE x.message_id = m.id AND x.mailbox = ?
+				) AS mentioned FROM messages m
 				WHERE workspace = ? AND sender != ?
 				ORDER BY id DESC LIMIT ?
 			) ORDER BY id ASC`,
+			me,
 			ws,
 			me,
 			opts.Last,
@@ -211,9 +314,12 @@ func (s *Store) Pull(
 	} else {
 		rows, err = tx.QueryContext(
 			ctx,
-			`SELECT id, sender, kind, body, created_at FROM
-			messages WHERE workspace = ? AND id > ? AND sender != ? 
+			`SELECT id, sender, kind, body, created_at, EXISTS(
+				SELECT 1 FROM mentions x WHERE x.message_id = m.id and x.mailbox = ?
+			) AS mentioned FROM messages m
+			WHERE workspace = ? AND id > ? AND sender != ? 
 			ORDER BY id ASC`,
+			me,
 			ws,
 			cursor,
 			me,
@@ -226,7 +332,7 @@ func (s *Store) Pull(
 	out := make([]Message, 0)
 	for rows.Next() {
 		var m Message
-		if err = rows.Scan(&m.ID, &m.Sender, &m.Kind, &m.Body, &m.CreatedAt); err != nil {
+		if err = rows.Scan(&m.ID, &m.Sender, &m.Kind, &m.Body, &m.CreatedAt, &m.Mentioned); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

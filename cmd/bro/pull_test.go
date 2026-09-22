@@ -24,7 +24,7 @@ func TestRunPullWritesTheMessagesItReturns(t *testing.T) {
 		t.Errorf("wrote %q, want nothing before any new traffic", first.String())
 	}
 
-	if _, err := s.Tell(t.Context(), "alpha", "worker-2", "auth done"); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "worker-2", "auth done", nil); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
