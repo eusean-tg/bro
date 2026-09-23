@@ -46,10 +46,10 @@ var (
 )
 
 type Mailbox struct {
-	Name        string
-	Description string
-	Cursor      int64
-	CreatedAt   int64
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Cursor      int64  `json:"cursor"`
+	CreatedAt   int64  `json:"created_at"`
 }
 
 func Open(path string) (*Store, error) {
@@ -161,7 +161,7 @@ func (s *Store) Log(ctx context.Context, ws string) ([]Message, error) {
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []Message
+	out := []Message{}
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Sender, &m.Kind, &m.Body, &m.CreatedAt); err != nil {
