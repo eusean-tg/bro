@@ -19,10 +19,11 @@ func TestPullReturnsMessagesAfterTheCursor(t *testing.T) {
 		}
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 2 {
 		t.Fatalf("Pull returned %d messages, want 2", len(msgs))
 	}
@@ -44,10 +45,11 @@ func TestPullExcludesTheReadersOwnMessages(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 1 {
 		t.Fatalf("Pull returned %d messages, want 1", len(msgs))
 	}
@@ -66,18 +68,20 @@ func TestPullAdvancesTheCursorSoASecondPullIsEmpty(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	first, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("first Pull: %v", err)
 	}
+	first := res.Messages
 	if len(first) != 1 {
 		t.Fatalf("first Pull returned %d messages, want 1", len(first))
 	}
 
-	second, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err = s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("second Pull: %v", err)
 	}
+	second := res.Messages
 	if len(second) != 0 {
 		t.Errorf("second Pull returned %d messages, want 0", len(second))
 	}
@@ -126,10 +130,11 @@ func TestPullIgnoresTrafficFromBeforeRegistration(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "latecomer", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "latecomer", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 1 {
 		t.Fatalf("Pull returned %d messages, want 1", len(msgs))
 	}
@@ -148,10 +153,11 @@ func TestPullIsScopedToOneWorkspace(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 0 {
 		t.Errorf("Pull returned %d messages, want 0", len(msgs))
 	}

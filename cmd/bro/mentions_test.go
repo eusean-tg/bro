@@ -23,10 +23,11 @@ func TestRunTellAddressesACommaSeparatedList(t *testing.T) {
 	}
 
 	for _, me := range []string{"reader", "other"} {
-		msgs, err := s.Pull(ctx, "alpha", me, store.PullOptions{})
+		res, err := s.Pull(ctx, "alpha", me, store.PullOptions{})
 		if err != nil {
 			t.Fatalf("Pull(%s): %v", me, err)
 		}
+		msgs := res.Messages
 		if len(msgs) != 1 || !msgs[0].Mentioned {
 			t.Errorf("%s was not addressed by --to reader,other", me)
 		}

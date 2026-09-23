@@ -24,10 +24,11 @@ func TestPullMarksAMessageAddressedToTheReader(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 1 {
 		t.Fatalf("Pull returned %d messages, want 1", len(msgs))
 	}
@@ -45,10 +46,11 @@ func TestPullDoesNotMarkAMessageAddressedToSomeoneElse(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 1 {
 		t.Fatalf("Pull returned %d messages, want 1: the room sees everything", len(msgs))
 	}
@@ -67,10 +69,11 @@ func TestPullMarksAMessageAddressedToSeveralMailboxes(t *testing.T) {
 	}
 
 	for _, me := range []string{"reader", "other"} {
-		msgs, err := s.Pull(ctx, "alpha", me, store.PullOptions{})
+		res, err := s.Pull(ctx, "alpha", me, store.PullOptions{})
 		if err != nil {
 			t.Fatalf("Pull(%s): %v", me, err)
 		}
+		msgs := res.Messages
 		if len(msgs) != 1 || !msgs[0].Mentioned {
 			t.Errorf("Pull(%s) did not mark the message as mentioned", me)
 		}
@@ -86,10 +89,11 @@ func TestPullLeavesAnUnaddressedMessageUnmarked(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
+	res, err := s.Pull(ctx, "alpha", "reader", store.PullOptions{})
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
+	msgs := res.Messages
 	if len(msgs) != 1 {
 		t.Fatalf("Pull returned %d messages, want 1", len(msgs))
 	}

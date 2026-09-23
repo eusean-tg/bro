@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -234,6 +235,7 @@ func runPull(
 	snc := pull.Int64("since", 0, "since id N")
 	lst := pull.Int("last", 0, "the N most recent")
 	pk := pull.Bool("peek", false, "do not advance the cursor")
+	js := pull.Bool("json", false, "enables json output")
 
 	if err := pull.Parse(rest); err != nil {
 		return err
@@ -261,12 +263,16 @@ func runPull(
 		return errors.New("pull requires identity")
 	}
 
-	msgs, err := s.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
+	res, err := s.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
 	if err != nil {
 		return fmt.Errorf("pull messages: %w", err)
 	}
 
-	printMessages(out, msgs)
+	if set["json"] && *js {
+		return json.NewEncoder(out).Encode(res)
+	}
+
+	printMessages(out, res.Messages)
 
 	return nil
 }

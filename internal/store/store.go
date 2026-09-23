@@ -26,12 +26,18 @@ type Store struct {
 }
 
 type Message struct {
-	ID        int64
-	Sender    string
-	Kind      string
-	Body      string
-	CreatedAt int64
-	Mentioned bool
+	ID        int64  `json:"id"`
+	Sender    string `json:"sender"`
+	Kind      string `json:"kind"`
+	Body      string `json:"body"`
+	CreatedAt int64  `json:"created_at"`
+	Mentioned bool   `json:"mentioned"`
+}
+
+type PullResult struct {
+	Messages    []Message `json:"messages"`
+	LatestID    int64     `json:"latest_id"`
+	UnreadCount int       `json:"unread_count"`
 }
 
 var (
@@ -275,16 +281,16 @@ func (s *Store) Pull(
 	ws string,
 	me string,
 	opts PullOptions,
-) ([]Message, error) {
+) (PullResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return PullResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	mb, err := fetchMailbox(ctx, tx, ws, me)
 	if err != nil {
-		return nil, err
+		return PullResult{}, err
 	}
 
 	cursor := mb.Cursor
@@ -309,7 +315,7 @@ func (s *Store) Pull(
 			opts.Last,
 		)
 		if err != nil {
-			return nil, err
+			return PullResult{}, err
 		}
 	} else {
 		rows, err = tx.QueryContext(
@@ -325,40 +331,65 @@ func (s *Store) Pull(
 			me,
 		)
 		if err != nil {
-			return nil, err
+			return PullResult{}, err
 		}
 	}
 
-	out := make([]Message, 0)
+	out := PullResult{
+		Messages: []Message{},
+	}
 	for rows.Next() {
 		var m Message
 		if err = rows.Scan(&m.ID, &m.Sender, &m.Kind, &m.Body, &m.CreatedAt, &m.Mentioned); err != nil {
-			return nil, err
+			return PullResult{}, err
 		}
-		out = append(out, m)
+		out.Messages = append(out.Messages, m)
 	}
 	_ = rows.Close()
 	if rows.Err() != nil {
-		return nil, rows.Err()
+		return PullResult{}, rows.Err()
 	}
+
+	var lastID int64
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(MAX(id), 0) FROM messages WHERE workspace = ?`,
+		ws,
+	).Scan(&lastID); err != nil {
+		return PullResult{}, err
+	}
+	out.LatestID = lastID
 
 	plain := !opts.Peek && opts.Since == nil && opts.Last == 0
 	if plain {
+		out.UnreadCount = 0
+
 		if _, err := tx.ExecContext(
 			ctx,
-			`UPDATE mailboxes SET cursor = (
-				SELECT COALESCE(MAX(id), 0) FROM messages WHERE workspace = ?
-			) WHERE workspace = ? AND name = ?`,
-			ws,
+			`UPDATE mailboxes SET cursor = ? WHERE workspace = ? AND name = ?`,
+			lastID,
 			ws,
 			me,
 		); err != nil {
-			return nil, err
+			return PullResult{}, err
 		}
+
+	} else {
+		var uc int
+		if err := tx.QueryRowContext(
+			ctx,
+			`SELECT COUNT(*) FROM messages WHERE workspace = ? AND id > ? AND sender != ?`,
+			ws,
+			mb.Cursor,
+			me,
+		).Scan(&uc); err != nil {
+			return PullResult{}, err
+		}
+		out.UnreadCount = uc
 	}
 
 	if err = tx.Commit(); err != nil {
-		return nil, err
+		return PullResult{}, err
 	}
 
 	return out, nil
