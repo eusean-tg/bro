@@ -15,7 +15,7 @@ func TestRunTellWritesIDAndStoresMessage(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runTell(t.Context(), s, cfg, &out, []string{"started on auth"}); err != nil {
+	if err := runTell(t.Context(), clientFor(t, s), cfg, &out, []string{"started on auth"}); err != nil {
 		t.Fatalf("runTell: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestRunTellWritesToTheGivenWorkspace(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runTell(t.Context(), s, cfg, &out, []string{"for alpha only"}); err != nil {
+	if err := runTell(t.Context(), clientFor(t, s), cfg, &out, []string{"for alpha only"}); err != nil {
 		t.Fatalf("runTell: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func TestRunTellRejectsBadInput(t *testing.T) {
 			cfg := Config{Identity: tt.identity, Workspace: "alpha"}
 
 			var out bytes.Buffer
-			if err := runTell(t.Context(), s, cfg, &out, tt.rest); err == nil {
+			if err := runTell(t.Context(), clientFor(t, s), cfg, &out, tt.rest); err == nil {
 				t.Fatal("runTell succeeded, want an error")
 			}
 

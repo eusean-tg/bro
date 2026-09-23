@@ -17,7 +17,7 @@ func TestRunPullWritesTheMessagesItReturns(t *testing.T) {
 
 	// Registered after the message above, so nothing is waiting yet.
 	var first bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &first, nil); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &first, nil); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 	if first.Len() != 0 {
@@ -29,7 +29,7 @@ func TestRunPullWritesTheMessagesItReturns(t *testing.T) {
 	}
 
 	var second bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &second, nil); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &second, nil); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 	if got := second.String(); !strings.Contains(got, "auth done") {
@@ -42,7 +42,7 @@ func TestRunPullRequiresAnIdentity(t *testing.T) {
 	cfg := Config{Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, nil); err == nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, nil); err == nil {
 		t.Fatal("runPull succeeded without an identity, want an error")
 	}
 	if out.Len() != 0 {

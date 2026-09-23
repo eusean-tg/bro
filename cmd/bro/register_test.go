@@ -14,7 +14,7 @@ func TestRunRegisterUsesTheGivenName(t *testing.T) {
 	cfg := Config{Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runRegister(t.Context(), s, cfg, &out, []string{"-n", "worker-1", "-d", "handles auth"}); err != nil {
+	if err := runRegister(t.Context(), clientFor(t, s), cfg, &out, []string{"-n", "worker-1", "-d", "handles auth"}); err != nil {
 		t.Fatalf("runRegister: %v", err)
 	}
 
@@ -36,7 +36,7 @@ func TestRunRegisterFallsBackToTheResolvedIdentity(t *testing.T) {
 	cfg := Config{Identity: "orchestrator", Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runRegister(t.Context(), s, cfg, &out, nil); err != nil {
+	if err := runRegister(t.Context(), clientFor(t, s), cfg, &out, nil); err != nil {
 		t.Fatalf("runRegister: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestRunRegisterGeneratesANameWhenNothingSuppliesOne(t *testing.T) {
 	cfg := Config{Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runRegister(t.Context(), s, cfg, &out, nil); err != nil {
+	if err := runRegister(t.Context(), clientFor(t, s), cfg, &out, nil); err != nil {
 		t.Fatalf("runRegister: %v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestRunRegisterGeneratesDistinctNames(t *testing.T) {
 	seen := map[string]bool{}
 	for i := range 20 {
 		var out bytes.Buffer
-		if err := runRegister(t.Context(), s, cfg, &out, nil); err != nil {
+		if err := runRegister(t.Context(), clientFor(t, s), cfg, &out, nil); err != nil {
 			t.Fatalf("runRegister #%d: %v", i, err)
 		}
 		name := strings.TrimSpace(out.String())
@@ -90,12 +90,12 @@ func TestRunRegisterRejectsADuplicate(t *testing.T) {
 	cfg := Config{Workspace: "alpha"}
 
 	var first bytes.Buffer
-	if err := runRegister(t.Context(), s, cfg, &first, []string{"-n", "worker-1"}); err != nil {
+	if err := runRegister(t.Context(), clientFor(t, s), cfg, &first, []string{"-n", "worker-1"}); err != nil {
 		t.Fatalf("first runRegister: %v", err)
 	}
 
 	var second bytes.Buffer
-	err := runRegister(t.Context(), s, cfg, &second, []string{"-n", "worker-1"})
+	err := runRegister(t.Context(), clientFor(t, s), cfg, &second, []string{"-n", "worker-1"})
 	if !errors.Is(err, store.ErrMailboxExists) {
 		t.Fatalf("second runRegister error = %v, want ErrMailboxExists", err)
 	}

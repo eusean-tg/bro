@@ -30,10 +30,10 @@ func TestRunPullPeekCanBeRepeated(t *testing.T) {
 	}
 
 	var first, second bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &first, []string{"--peek"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &first, []string{"--peek"}); err != nil {
 		t.Fatalf("first runPull: %v", err)
 	}
-	if err := runPull(t.Context(), s, cfg, &second, []string{"--peek"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &second, []string{"--peek"}); err != nil {
 		t.Fatalf("second runPull: %v", err)
 	}
 
@@ -59,12 +59,12 @@ func TestRunPullSinceReadsPastTheCursor(t *testing.T) {
 
 	// Consume everything.
 	var drain bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &drain, nil); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &drain, nil); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, []string{"--since", "0"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--since", "0"}); err != nil {
 		t.Fatalf("runPull(--since 0): %v", err)
 	}
 	for _, want := range []string{"one", "two"} {
@@ -87,7 +87,7 @@ func TestRunPullLastLimitsTheCount(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, []string{"--last", "1"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--last", "1"}); err != nil {
 		t.Fatalf("runPull(--last 1): %v", err)
 	}
 	got := out.String()
@@ -104,7 +104,7 @@ func TestRunPullRejectsSinceAndLastTogether(t *testing.T) {
 	cfg := reader(t, s)
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, []string{"--since", "0", "--last", "2"}); err == nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--since", "0", "--last", "2"}); err == nil {
 		t.Fatal("runPull accepted --since with --last, want an error")
 	}
 	if out.Len() != 0 {

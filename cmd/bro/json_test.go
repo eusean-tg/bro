@@ -14,7 +14,7 @@ func pullJSON(t *testing.T, s *store.Store, cfg Config, args ...string) map[stri
 	t.Helper()
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, append([]string{"--json"}, args...)); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, append([]string{"--json"}, args...)); err != nil {
 		t.Fatalf("runPull(--json): %v", err)
 	}
 
@@ -92,7 +92,7 @@ func TestRunPullJSONEncodesAnEmptyResultAsAnArray(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runPull(t.Context(), s, cfg, &out, []string{"--json"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--json"}); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 

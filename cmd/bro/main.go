@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/eusean-tg/bro/internal/client"
 	"github.com/eusean-tg/bro/internal/store"
 )
 
@@ -28,6 +29,21 @@ func dbPath() (string, error) {
 
 	if err := os.MkdirAll(filepath.Dir(v), 0o700); err != nil {
 		return "", fmt.Errorf("create db at path: %w", err)
+	}
+
+	return v, nil
+}
+
+func sockPath() (string, error) {
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("home dir: %w", err)
+	}
+
+	v := cmp.Or(os.Getenv("BRO_SOCK"), filepath.Join(h, ".bro", "bro.sock"))
+
+	if err := os.MkdirAll(filepath.Dir(v), 0o700); err != nil {
+		return "", fmt.Errorf("create sock at path: %w", err)
 	}
 
 	return v, nil
@@ -75,26 +91,22 @@ func run(args []string) error {
 		return err
 	}
 
-	db, err := dbPath()
+	sock, err := sockPath()
 	if err != nil {
-		return fmt.Errorf("db path: %w", err)
+		return fmt.Errorf("sock path: %w", err)
 	}
 
-	s, err := store.Open(db)
-	if err != nil {
-		return fmt.Errorf("open store: %w", err)
-	}
-	defer func() { _ = s.Close() }()
+	c := client.New(sock, "", "dev")
 
 	switch cmd, rest := global.Arg(0), global.Args()[1:]; cmd {
 	case "tell":
-		return runTell(ctx, s, cfg, os.Stdout, rest)
+		return runTell(ctx, c, cfg, os.Stdout, rest)
 	case "log":
-		return runLog(ctx, s, cfg, os.Stdout)
+		return runLog(ctx, c, cfg, os.Stdout)
 	case "register":
-		return runRegister(ctx, s, cfg, os.Stdout, rest)
+		return runRegister(ctx, c, cfg, os.Stdout, rest)
 	case "pull":
-		return runPull(ctx, s, cfg, os.Stdout, rest)
+		return runPull(ctx, c, cfg, os.Stdout, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -102,7 +114,7 @@ func run(args []string) error {
 
 func runTell(
 	ctx context.Context,
-	s *store.Store,
+	c *client.Client,
 	cfg Config,
 	out io.Writer,
 	rest []string,
@@ -131,7 +143,7 @@ func runTell(
 		to = strings.Split(*toFlag, ",")
 	}
 
-	id, err := s.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to)
+	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to)
 	if err != nil {
 		return fmt.Errorf("unable to tell: %w", err)
 	}
@@ -182,8 +194,8 @@ func printMessages(out io.Writer, msgs []store.Message) {
 	}
 }
 
-func runLog(ctx context.Context, s *store.Store, cfg Config, out io.Writer) error {
-	msgs, err := s.Log(ctx, cfg.Workspace)
+func runLog(ctx context.Context, c *client.Client, cfg Config, out io.Writer) error {
+	msgs, err := c.Log(ctx, cfg.Workspace)
 	if err != nil {
 		return fmt.Errorf("log messages: %w", err)
 	}
@@ -199,7 +211,7 @@ func randomName() string {
 
 func runRegister(
 	ctx context.Context,
-	s *store.Store,
+	c *client.Client,
 	cfg Config,
 	out io.Writer,
 	rest []string,
@@ -214,7 +226,7 @@ func runRegister(
 
 	name := cmp.Or(*n, cfg.Identity, randomName())
 
-	mb, err := s.Register(ctx, cfg.Workspace, name, *d)
+	mb, err := c.Register(ctx, cfg.Workspace, name, *d)
 	if err != nil {
 		return fmt.Errorf("register mailbox: %w", err)
 	}
@@ -226,7 +238,7 @@ func runRegister(
 
 func runPull(
 	ctx context.Context,
-	s *store.Store,
+	c *client.Client,
 	cfg Config,
 	out io.Writer,
 	rest []string,
@@ -263,7 +275,7 @@ func runPull(
 		return errors.New("pull requires identity")
 	}
 
-	res, err := s.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
+	res, err := c.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
 	if err != nil {
 		return fmt.Errorf("pull messages: %w", err)
 	}

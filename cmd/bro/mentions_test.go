@@ -18,7 +18,7 @@ func TestRunTellAddressesACommaSeparatedList(t *testing.T) {
 	cfg := Config{Identity: "sender", Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runTell(ctx, s, cfg, &out, []string{"--to", "reader,other", "heads up"}); err != nil {
+	if err := runTell(ctx, clientFor(t, s), cfg, &out, []string{"--to", "reader,other", "heads up"}); err != nil {
 		t.Fatalf("runTell: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func TestRunTellRejectsAnUnknownRecipient(t *testing.T) {
 	cfg := Config{Identity: "sender", Workspace: "alpha"}
 
 	var out bytes.Buffer
-	if err := runTell(ctx, s, cfg, &out, []string{"--to", "ghost", "hi"}); err == nil {
+	if err := runTell(ctx, clientFor(t, s), cfg, &out, []string{"--to", "ghost", "hi"}); err == nil {
 		t.Fatal("runTell accepted an unknown recipient, want an error")
 	}
 	if out.Len() != 0 {
