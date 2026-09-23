@@ -186,9 +186,9 @@ possible failure mode for an agent that will never notice.
 
 ## Daemon
 
-A unix domain socket at `$XDG_RUNTIME_DIR/bro/bro.sock`, or
-`~/Library/Application Support/bro/bro.sock` on macOS. No port, no network exposure,
-and filesystem permissions become the access control.
+A unix domain socket at `~/.bro/bro.sock`, overridable with `$BRO_SOCK`. It shares
+`~/.bro` with the database, and that directory is created `0700`: no port, no network
+exposure, and filesystem permissions are the access control.
 
 Serve plain HTTP over the listener:
 
@@ -203,24 +203,43 @@ return http.Serve(l, mux)
 That buys routing, methods, status codes, and JSON bodies for free, and the whole
 thing is debuggable with `curl --unix-socket`.
 
-A daemon killed with `SIGKILL` leaves the socket file behind and `net.Listen` fails on
-it, so unlink a stale socket on startup.
+### Single instance
+
+Before touching the socket, the daemon takes an exclusive, non-blocking `flock` on
+`~/.bro/daemon.lock`. A daemon that cannot take the lock exits 0: another one is
+serving. The kernel releases the lock when its holder dies, including by `SIGKILL`, so
+the lock never goes stale.
+
+Holding the lock is what makes the socket file safe to unlink. A daemon killed with
+`SIGKILL` leaves the socket file behind and `net.Listen` fails on it; the lock holder
+removes it before listening. Without the lock, two daemons spawned at the same moment
+would each treat the other's live socket as stale, and the loser of that race would
+leave a running daemon nobody can reach.
 
 ### Client-side spawn
 
 The client dials the socket. On `ENOENT` or `ECONNREFUSED` it spawns `bro daemon`
-detached and retries with backoff.
+detached and retries with backoff, within a fixed budget. Spawning lives in the
+client's dial function, so no request code knows whether the daemon was running.
 
 ### Version handshake
 
-Every request carries the client's build version. On mismatch, the client kills and
-respawns the daemon. Ten lines, and it removes an entire category of "why isn't my
-rebuild taking effect" that is hard to recognize from the inside.
+Every request carries the client's build version in a `Bro-Version` header. The version
+is a hash of the running executable, so every rebuild — `go run` included — produces a
+new one; a hand-maintained version string would stay identical across exactly the
+rebuilds this check exists to catch.
+
+On mismatch the daemon answers `412 Precondition Failed` and shuts itself down. The
+client retries, finds nothing listening, and the ordinary spawn path starts the current
+build. The client never kills a process, so there is no PID file to go stale. This
+removes an entire category of "why isn't my rebuild taking effect" that is hard to
+recognize from the inside.
 
 ### Storage
 
 SQLite in WAL mode via `modernc.org/sqlite` — pure Go, no cgo, cross-compilation stays
-trivial.
+trivial. The file lives at `~/.bro/data.db`, overridable with `$BRO_DB`. Only the daemon
+opens it.
 
 SQLite alone could do almost all of this; a client polling the file every 200ms would
 be indistinguishable from a daemon at agent timescales. The daemon earns its place on
