@@ -206,9 +206,9 @@ thing is debuggable with `curl --unix-socket`.
 ### Single instance
 
 Before touching the socket, the daemon takes an exclusive, non-blocking `flock` on
-`~/.bro/daemon.lock`. A daemon that cannot take the lock exits 0: another one is
-serving. The kernel releases the lock when its holder dies, including by `SIGKILL`, so
-the lock never goes stale.
+`daemon.lock` in the socket's directory, so `$BRO_SOCK` moves the lock with it. A
+daemon that cannot take the lock exits 0: another one is serving. The kernel releases
+the lock when its holder dies, including by `SIGKILL`, so the lock never goes stale.
 
 Holding the lock is what makes the socket file safe to unlink. A daemon killed with
 `SIGKILL` leaves the socket file behind and `net.Listen` fails on it; the lock holder

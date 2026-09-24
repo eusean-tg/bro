@@ -83,20 +83,28 @@ func run(args []string) error {
 	}
 
 	if global.NArg() == 0 {
-		return errors.New("usage: bro [--workspace NAME] [--as NAME] <tell|log>")
-	}
-
-	cfg, err := Resolve(*identity, *workspace)
-	if err != nil {
-		return err
+		return errors.New("usage: bro [--workspace NAME] [--as NAME] <tell|log|register|pull|daemon>")
 	}
 
 	sock, err := sockPath()
 	if err != nil {
 		return fmt.Errorf("sock path: %w", err)
 	}
+	db, err := dbPath()
+	if err != nil {
+		return fmt.Errorf("db path: %w", err)
+	}
 
 	c := client.New(sock, "", "dev")
+
+	if global.Arg(0) == "daemon" {
+		return runDaemon(ctx, sock, db, c.Version)
+	}
+
+	cfg, err := Resolve(*identity, *workspace)
+	if err != nil {
+		return err
+	}
 
 	switch cmd, rest := global.Arg(0), global.Args()[1:]; cmd {
 	case "tell":
