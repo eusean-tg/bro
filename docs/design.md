@@ -130,11 +130,12 @@ named or the command refuses to run.
 
 ### Termination
 
-`bro close` writes a `control` message and sets `workspaces.closed_id`. A waiter
-compares its cursor against `closed_id` **before** deciding to block. Because the
-cursor and the marker live in the same total order, the comparison and the decision
-happen in the same call under the same lock, so a worker that finishes just after the
-close still sees it and exits instead of blocking forever.
+`bro close` writes a `control` message and sets `workspaces.closed_id`. The wake
+check treats a `closed_id` past the reader's cursor as a reason to wake, and `close`
+publishes to the hub like any other write. The waiter subscribes before it checks
+(see [The wait loop](#the-wait-loop)), so a close is covered exactly as a mention is:
+a worker that begins waiting just after the close still sees it and exits instead of
+blocking forever.
 
 ### Late registrants
 
@@ -176,7 +177,7 @@ Agents branch on exit codes without parsing. Reserve them:
 | 0 | Messages returned |
 | 1 | Error |
 | 2 | Hook mode: block the stop |
-| 3 | No messages (timed out; call again) |
+| 3 | The wait timed out; call again. Messages that arrived without waking the reader are still returned |
 | 4 | Unit complete; stop |
 
 ### Sending to an unknown mailbox is an error
@@ -234,6 +235,19 @@ client retries, finds nothing listening, and the ordinary spawn path starts the 
 build. The client never kills a process, so there is no PID file to go stale. This
 removes an entire category of "why isn't my rebuild taking effect" that is hard to
 recognize from the inside.
+
+The client retries a request only on `412` and `503`, the two responses that guarantee
+the daemon changed nothing. Any other failure may have committed — a `tell` that fails
+after its insert has posted — so retrying it could post twice.
+
+### Shutdown
+
+A daemon stopping mid-wait must not strand its waiters. The `http.Server`'s
+`BaseContext` is the daemon's context, so stopping the daemon cancels every in-flight
+request's context. Each wait returns at once, its handler answers `503`, `Shutdown`
+completes, and only then does the store close. The client retries the `503`, which
+spawns the current daemon, and the wait starts over there. A wait cancelled before
+the pull runs has not moved the cursor, so the retry loses nothing.
 
 ### Storage
 
@@ -359,6 +373,12 @@ the wire, `os/exec` and process detachment, `signal.NotifyContext` for shutdown.
 
 The interesting milestone. Everything before this is a normal CRUD app.
 
+`pull --wait DURATION` blocks until an unread message mentions the reader, then pulls
+as usual. On timeout it pulls anyway and marks the result `timed_out`. `--wait`
+combines with a plain pull and with `--peek`, and is rejected alongside `--since` or
+`--last`, which ignore the cursor the wake check is measured from. Waking on control
+messages and on `close` arrives with M5.
+
 Teaches: goroutines, channels, `select`, `context.Context` and cancellation,
 `sync.Mutex`.
 
@@ -442,62 +462,65 @@ Four Go things in thirty lines, and each is worth stopping on:
 
 ### The wait loop
 
+Waiting decides only *when* the pull happens. `wait` returns once the store says an
+unread message mentions the reader; the ordinary `Pull`, with its cursor transaction
+and `--peek`, does the reading.
+
 ```go
-func (s *Server) wait(ctx context.Context, ws, me string, cursor int64) ([]store.Message, error) {
+// wait blocks until ws has an unread message that mentions me, or ctx ends.
+func (sv *server) wait(ctx context.Context, ws, me string) error {
+	wake, unsub := sv.hub.Subscribe(ws)
+	defer unsub()
+
 	for {
-		// Check before blocking. A close marker or a message that landed
-		// before Subscribe must not be missed.
-		msgs, closed, err := s.store.Since(ctx, ws, me, cursor)
-		if err != nil {
-			return nil, err
-		}
-		if closed {
-			return nil, ErrUnitComplete
-		}
-		if len(msgs) > 0 {
-			return msgs, nil
-		}
-
-		wake, unsub := s.hub.Subscribe(ws)
-
-		// Re-check after subscribing. A write landing between the query above
-		// and Subscribe would otherwise be lost, and this waiter would sleep
-		// through a message that already exists.
-		msgs, closed, err = s.store.Since(ctx, ws, me, cursor)
-		if err != nil || closed || len(msgs) > 0 {
-			unsub()
-			switch {
-			case err != nil:
-				return nil, err
-			case closed:
-				return nil, ErrUnitComplete
-			default:
-				return msgs, nil
-			}
+		// Subscribed before checking: a write that commits after this check
+		// has already rung wake, so it cannot fall between the check and the
+		// select below.
+		ok, err := sv.st.Wakeable(ctx, ws, me)
+		if err != nil || ok {
+			return err
 		}
 
 		select {
 		case <-wake:
-			unsub()
-			// Loop and re-query.
+			// Something changed. Loop and re-check.
 		case <-ctx.Done():
-			unsub()
-			return nil, ctx.Err()
+			return ctx.Err()
 		}
 	}
 }
 ```
 
-The subscribe-then-recheck is the crux of the whole program. Checking once and then
-subscribing has a window between the two where a write disappears, and the resulting
-bug is a worker that hangs for the full timeout perhaps one run in twenty. Race
-conditions that only appear under load are the most expensive kind to find, and this
-shape — check, subscribe, check again, block — is how you avoid this one.
+Subscribing before the check is the crux of the whole program. Checking first and then
+subscribing leaves a window between the two where a write commits, publishes to
+nobody, and disappears, and the resulting bug is a worker that hangs for the full
+timeout perhaps one run in twenty. Race conditions that only appear under load are the
+most expensive kind to find. With the subscription first, every message either
+committed before the check, which sees it, or after the subscription, which rang the
+channel. One subscription covers every pass of the loop: a wake that lands during a
+re-check waits in the channel's buffer, and the next `select` returns at once.
 
-Note also that `ctx.Done()` is the only thing implementing the timeout. The HTTP
-handler sets it with `context.WithTimeout(r.Context(), d)`, and `r.Context()` is
-already canceled when the client disconnects, so a worker whose process dies releases
-its slot automatically. That is presence, and it is why the daemon exists.
+`tell` publishes after `Store.Tell` returns, which is after the commit. A publish
+before the commit would wake waiters that cannot yet see the row; they would find
+nothing, block again, and the wake would be spent.
+
+The handler owns three contexts:
+
+- `r.Context()` ends when the client disconnects, and — through `BaseContext` — when
+  the daemon stops. The pull runs under it.
+- `context.WithTimeout(r.Context(), d)` bounds the wait and nothing else. After a
+  timeout it has expired, so the pull must not use it.
+- A wait that ends in `context.DeadlineExceeded` timed out: the pull runs and the
+  response carries `timed_out: true`. A wait that ends in `context.Canceled` means the
+  client is gone or the daemon is stopping: the handler answers `503` and never
+  pulls.
+
+That last rule is presence. A worker whose process dies mid-wait closes its connection,
+its wait is cancelled before the pull, and its cursor does not move, so a dead worker
+never consumes messages. It is why the daemon exists.
+
+`timed_out` lives in `server.PullResponse`, which embeds `store.PullResult`. Waiting is
+a daemon concept; the store never learns that anyone waited.
 
 ## Testing
 
