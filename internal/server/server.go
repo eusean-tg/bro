@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/eusean-tg/bro/internal/store"
@@ -23,7 +24,7 @@ func New(st *store.Store, version string, stop func()) http.Handler {
 	mux.HandleFunc("POST /register", sv.register)
 	mux.HandleFunc("POST /pull", sv.pull)
 
-	return mux
+	return withVersion(version, stop, mux)
 }
 
 func (sv *server) tell(w http.ResponseWriter, r *http.Request) {
@@ -109,4 +110,23 @@ func writeError(w http.ResponseWriter, err error) {
 	}
 
 	writeJSON(w, status, ErrorResponse{Error: err.Error()})
+}
+
+func withVersion(version string, stop func(), next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		v := r.Header.Get("Bro-Version")
+		if v != "" && v != version {
+			w.Header().Set("Connection", "close")
+			writeJSON(
+				w,
+				http.StatusPreconditionFailed,
+				ErrorResponse{
+					Error: fmt.Sprintf("bad version: daemon %q, client %q", version, v),
+				},
+			)
+			stop()
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -100,16 +102,21 @@ func run(args []string) error {
 		return fmt.Errorf("exe path: %w", err)
 	}
 
-	c := client.New(sock, exe, "dev")
+	ver, err := buildVersion(exe)
+	if err != nil {
+		return fmt.Errorf("build version: %w", err)
+	}
 
 	if global.Arg(0) == "daemon" {
-		return runDaemon(ctx, sock, db, c.Version)
+		return runDaemon(ctx, sock, db, ver[:12])
 	}
 
 	cfg, err := Resolve(*identity, *workspace)
 	if err != nil {
 		return err
 	}
+
+	c := client.New(sock, exe, ver[:12])
 
 	switch cmd, rest := global.Arg(0), global.Args()[1:]; cmd {
 	case "tell":
@@ -300,4 +307,19 @@ func runPull(
 	printMessages(out, res.Messages)
 
 	return nil
+}
+
+func buildVersion(exe string) (string, error) {
+	f, err := os.Open(exe)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

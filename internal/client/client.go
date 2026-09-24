@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"github.com/eusean-tg/bro/internal/server"
 	"github.com/eusean-tg/bro/internal/store"
 )
+
+var errVersionMismatch = errors.New("version mismatch")
 
 type Client struct {
 	BaseURL string
@@ -32,18 +35,40 @@ func New(sockPath, exe, version string) *Client {
 	}
 }
 
-func (c *Client) do(ctx context.Context, path string, req, resp any) error {
+func (c *Client) do(
+	ctx context.Context,
+	path string,
+	req,
+	resp any,
+) error {
 	b, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	body := bytes.NewReader(b)
+
+	for i := 0; ; i++ {
+		err := c.once(ctx, path, b, resp)
+
+		if errors.Is(err, errVersionMismatch) && i < 3 {
+			continue
+		}
+		return err
+	}
+}
+
+func (c *Client) once(
+	ctx context.Context,
+	path string,
+	body []byte,
+	resp any,
+) error {
+	b := bytes.NewReader(body)
 
 	r, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		c.BaseURL+path,
-		body,
+		b,
 	)
 	if err != nil {
 		return err
@@ -68,6 +93,8 @@ func (c *Client) do(ctx context.Context, path string, req, resp any) error {
 			err = store.ErrMailboxExists
 		case http.StatusNotFound:
 			err = store.ErrNoMailbox
+		case http.StatusPreconditionFailed:
+			err = errVersionMismatch
 		default:
 			return fmt.Errorf("bro sock returned %d: %s", res.StatusCode, out.Error)
 		}
