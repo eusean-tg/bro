@@ -21,8 +21,7 @@ type Client struct {
 func New(sockPath, exe, version string) *Client {
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", sockPath)
+			return dial(ctx, sockPath, exe)
 		},
 	}
 

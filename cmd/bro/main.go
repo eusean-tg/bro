@@ -95,7 +95,12 @@ func run(args []string) error {
 		return fmt.Errorf("db path: %w", err)
 	}
 
-	c := client.New(sock, "", "dev")
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("exe path: %w", err)
+	}
+
+	c := client.New(sock, exe, "dev")
 
 	if global.Arg(0) == "daemon" {
 		return runDaemon(ctx, sock, db, c.Version)
