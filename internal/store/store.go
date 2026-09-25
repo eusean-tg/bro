@@ -394,3 +394,29 @@ func (s *Store) Pull(
 
 	return out, nil
 }
+
+func (s *Store) Wakeable(ctx context.Context, ws, me string) (bool, error) {
+	mb, err := fetchMailbox(ctx, s.db, ws, me)
+	if err != nil {
+		return false, fmt.Errorf("wakeable fetch mailbox: %w", err)
+	}
+
+	var shouldWake bool
+	if err := s.db.QueryRowContext(
+		ctx,
+		`SELECT EXISTS(
+				SELECT 1 FROM messages msg
+				JOIN mentions mnt 
+				ON msg.id = mnt.message_id
+				WHERE msg.workspace = ? AND msg.id > ? AND msg.sender <> ? AND mnt.mailbox = ?
+		)`,
+		ws,
+		mb.Cursor,
+		me,
+		me,
+	).Scan(&shouldWake); err != nil {
+		return false, fmt.Errorf("wakeable should wake: %w", err)
+	}
+
+	return shouldWake, nil
+}
