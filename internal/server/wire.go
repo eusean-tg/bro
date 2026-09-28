@@ -37,6 +37,12 @@ type PullRequest struct {
 	Since     *int64 `json:"since"` // null: start from the cursor
 	Last      int    `json:"last"`  // 0: no limit
 	Peek      bool   `json:"peek"`
+	WaitMS    int64  `json:"wait_ms"`
+}
+
+type PullResponse struct {
+	store.PullResult
+	TimedOut bool `json:"timed_out"`
 }
 
 // ErrorResponse is the body of every non-200 response.
