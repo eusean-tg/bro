@@ -90,6 +90,7 @@ CREATE TABLE mailboxes (
   name        TEXT    NOT NULL,
   description TEXT    NOT NULL DEFAULT '',
   cursor      INTEGER NOT NULL DEFAULT 0,
+  joined_id   INTEGER NOT NULL DEFAULT 0,     -- latest id at registration; never moves
   created_at  INTEGER NOT NULL,
   PRIMARY KEY (workspace, name)
 );
@@ -130,17 +131,33 @@ named or the command refuses to run.
 
 ### Termination
 
-`bro close` writes a `control` message and sets `workspaces.closed_id`. The wake
-check treats a `closed_id` past the reader's cursor as a reason to wake, and `close`
-publishes to the hub like any other write. The waiter subscribes before it checks
-(see [The wait loop](#the-wait-loop)), so a close is covered exactly as a mention is:
-a worker that begins waiting just after the close still sees it and exits instead of
-blocking forever.
+`bro close` ends a unit of work. In one transaction it writes a `control` message and
+sets `workspaces.closed_id` to that message's id.
+
+A close applies to the mailboxes that existed when it was written. A mailbox is closed
+when `closed_id > joined_id`, where `joined_id` is the latest id in the workspace at the
+moment it registered. The mailbox that sent the close is never closed by it. Every pull
+by a closed mailbox reports `closed: true`, and the CLI exits 4.
+
+This is what lets one workspace hold a sequence of units. `$BRO_WORKSPACE` is fixed for
+the life of a `claude` process and everything it spawns, so a workspace that closed
+forever would force a restart before the next unit. The next unit's workers register
+after the close, start open, and are unaffected by it; the orchestrator that closed
+carries on. Each `bro close` writes a new control message and moves `closed_id`, so a
+repeated close ends the same workers again and nothing else.
+
+The wake check treats a closed mailbox as always wakeable, so a closed worker's wait
+returns at once and its pull exits 4 — including a worker that has already read the
+close and waits again. `close` publishes to the hub like any other write. The waiter subscribes before it
+checks (see [The wait loop](#the-wait-loop)), so a close is covered exactly as a mention
+is: a worker that begins waiting just after the close still sees it and exits instead
+of blocking forever.
 
 ### Late registrants
 
 A mailbox registered at time T starts with its cursor at the highest `id` in its
-workspace, so it does not see earlier traffic.
+workspace, so it does not see earlier traffic. The same id is kept as `joined_id`, which
+never moves, so a close written before the mailbox existed does not apply to it.
 
 ## CLI surface
 
@@ -178,7 +195,7 @@ Agents branch on exit codes without parsing. Reserve them:
 | 1 | Error |
 | 2 | Hook mode: block the stop |
 | 3 | The wait timed out; call again. Messages that arrived without waking the reader are still returned |
-| 4 | Unit complete; stop |
+| 4 | Unit complete: a close written after this mailbox registered; stop |
 
 ### Sending to an unknown mailbox is an error
 

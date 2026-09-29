@@ -100,6 +100,9 @@ Traps. Call these out when they come up:
 State the defect, its consequence, and where it is. If the fix requires an idiom the
 owner is unlikely to know, show that idiom on a toy type and stop.
 
+"Where" is a `path/to/file.go:LINE` reference, or `:START-END` for a span, taken from
+the current working tree, not from a diff hunk. Name the function as well.
+
 > `hub.Publish` sends on an unbuffered channel while holding the mutex, so a single
 > waiter that is not currently receiving blocks every other waiter's wake-up. The
 > idiom for a send that must never block is `select` with a `default` case:
