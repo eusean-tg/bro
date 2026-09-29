@@ -249,6 +249,11 @@ completes, and only then does the store close. The client retries the `503`, whi
 spawns the current daemon, and the wait starts over there. A wait cancelled before
 the pull runs has not moved the cursor, so the retry loses nothing.
 
+The same cancellation reaches requests that are not waiting. A `tell` cut off
+mid-transaction rolls back — `database/sql` checks the context before it commits — so
+any request whose store call fails with `context.Canceled` also answers `503`, and the
+client retries it like a cancelled wait.
+
 ### Storage
 
 SQLite in WAL mode via `modernc.org/sqlite` — pure Go, no cgo, cross-compilation stays

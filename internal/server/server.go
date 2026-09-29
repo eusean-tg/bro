@@ -166,6 +166,8 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, store.ErrMailboxExists):
 		status = http.StatusConflict
+	case errors.Is(err, context.Canceled):
+		status = http.StatusServiceUnavailable
 	}
 
 	writeJSON(w, status, ErrorResponse{Error: err.Error()})

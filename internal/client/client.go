@@ -19,6 +19,14 @@ var (
 	errUnavailable     = errors.New("unavailable")
 )
 
+type remoteError struct {
+	msg  string
+	kind error
+}
+
+func (e *remoteError) Error() string { return e.msg }
+func (e *remoteError) Unwrap() error { return e.kind }
+
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -91,21 +99,23 @@ func (c *Client) once(
 		var out server.ErrorResponse
 		_ = json.NewDecoder(res.Body).Decode(&out)
 
-		var err error
+		err := &remoteError{
+			msg: out.Error,
+		}
 		switch res.StatusCode {
 		case http.StatusConflict:
-			err = store.ErrMailboxExists
+			err.kind = store.ErrMailboxExists
 		case http.StatusNotFound:
-			err = store.ErrNoMailbox
+			err.kind = store.ErrNoMailbox
 		case http.StatusPreconditionFailed:
-			err = errVersionMismatch
+			err.kind = errVersionMismatch
 		case http.StatusServiceUnavailable:
-			err = errUnavailable
+			err.kind = errUnavailable
 		default:
 			return fmt.Errorf("bro sock returned %d: %s", res.StatusCode, out.Error)
 		}
 
-		return fmt.Errorf("%s: %w", out.Error, err)
+		return err
 	}
 
 	return json.NewDecoder(res.Body).Decode(resp)

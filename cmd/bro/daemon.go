@@ -42,7 +42,10 @@ func runDaemon(ctx context.Context, sock, db, version string) error {
 		return err
 	}
 
-	srv := &http.Server{Handler: server.New(st, version, stop)}
+	srv := &http.Server{
+		Handler:     server.New(st, version, stop),
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 
 	go func() {
 		if err := srv.Serve(l); !errors.Is(err, http.ErrServerClosed) {
