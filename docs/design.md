@@ -255,6 +255,16 @@ SQLite in WAL mode via `modernc.org/sqlite` — pure Go, no cgo, cross-compilati
 trivial. The file lives at `~/.bro/data.db`, overridable with `$BRO_DB`. Only the daemon
 opens it.
 
+The daemon serves requests concurrently, so a `tell`, a `pull` and a waiter's wake check
+can overlap on the same file. Three connection settings make overlap a wait rather than
+a `database is locked` error:
+
+- `journal_mode(WAL)`: readers and the writer do not block each other.
+- `busy_timeout(5000)`: a second writer waits up to 5s for the first instead of failing.
+- `_txlock=immediate`: every transaction takes the write lock at `BEGIN`. A deferred
+  transaction that reads and then writes fails with `SQLITE_BUSY_SNAPSHOT` if another
+  write committed in between, and the busy timeout does not cover that case.
+
 SQLite alone could do almost all of this; a client polling the file every 200ms would
 be indistinguishable from a daemon at agent timescales. The daemon earns its place on
 **presence**: it holds open connections, so when a worker dies it can tell the

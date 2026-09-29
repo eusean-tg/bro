@@ -153,7 +153,7 @@ func TestPullReturnsTheResultAndAdvancesTheCursor(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	res, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{})
+	res, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Pull: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestPullReturnsTheResultAndAdvancesTheCursor(t *testing.T) {
 		t.Errorf("result = %+v, want the news message and latest_id %d", res, id)
 	}
 
-	again, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{})
+	again, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{}, 0)
 	if err != nil {
 		t.Fatalf("second Pull: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestPullSendsTheOptions(t *testing.T) {
 		ids = append(ids, id)
 	}
 
-	since, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Since: &ids[1], Peek: true})
+	since, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Since: &ids[1], Peek: true}, 0)
 	if err != nil {
 		t.Fatalf("Pull(since): %v", err)
 	}
@@ -191,7 +191,7 @@ func TestPullSendsTheOptions(t *testing.T) {
 		t.Errorf("since %d = %+v, want only three", ids[1], since.Messages)
 	}
 
-	last, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Last: 2})
+	last, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Last: 2}, 0)
 	if err != nil {
 		t.Fatalf("Pull(last): %v", err)
 	}
@@ -199,7 +199,7 @@ func TestPullSendsTheOptions(t *testing.T) {
 		t.Errorf("last 2 = %+v, want two and three", last.Messages)
 	}
 
-	peek, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Peek: true})
+	peek, err := c.Pull(t.Context(), "alpha", "reader", store.PullOptions{Peek: true}, 0)
 	if err != nil {
 		t.Fatalf("Pull(peek): %v", err)
 	}
@@ -211,7 +211,7 @@ func TestPullSendsTheOptions(t *testing.T) {
 func TestPullOfAnUnknownMailboxIsErrNoMailbox(t *testing.T) {
 	_, c := newClient(t)
 
-	_, err := c.Pull(t.Context(), "alpha", "nobody", store.PullOptions{})
+	_, err := c.Pull(t.Context(), "alpha", "nobody", store.PullOptions{}, 0)
 	if !errors.Is(err, store.ErrNoMailbox) {
 		t.Errorf("err = %v, want store.ErrNoMailbox", err)
 	}

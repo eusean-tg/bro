@@ -8,12 +8,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/eusean-tg/bro/internal/server"
 	"github.com/eusean-tg/bro/internal/store"
 )
 
-var errVersionMismatch = errors.New("version mismatch")
+var (
+	errVersionMismatch = errors.New("version mismatch")
+	errUnavailable     = errors.New("unavailable")
+)
 
 type Client struct {
 	BaseURL string
@@ -49,7 +53,7 @@ func (c *Client) do(
 	for i := 0; ; i++ {
 		err := c.once(ctx, path, b, resp)
 
-		if errors.Is(err, errVersionMismatch) && i < 3 {
+		if (errors.Is(err, errVersionMismatch) || errors.Is(err, errUnavailable)) && i < 3 {
 			continue
 		}
 		return err
@@ -95,6 +99,8 @@ func (c *Client) once(
 			err = store.ErrNoMailbox
 		case http.StatusPreconditionFailed:
 			err = errVersionMismatch
+		case http.StatusServiceUnavailable:
+			err = errUnavailable
 		default:
 			return fmt.Errorf("bro sock returned %d: %s", res.StatusCode, out.Error)
 		}
@@ -154,12 +160,20 @@ func (c *Client) Pull(
 	ws string,
 	me string,
 	opts store.PullOptions,
-) (store.PullResult, error) {
-	var res store.PullResult
-	req := server.PullRequest{Workspace: ws, Me: me, Since: opts.Since, Last: opts.Last, Peek: opts.Peek}
+	wait time.Duration,
+) (server.PullResponse, error) {
+	var res server.PullResponse
+	req := server.PullRequest{
+		Workspace: ws,
+		Me:        me,
+		Since:     opts.Since,
+		Last:      opts.Last,
+		Peek:      opts.Peek,
+		WaitMS:    wait.Milliseconds(),
+	}
 
 	if err := c.do(ctx, "/pull", req, &res); err != nil {
-		return store.PullResult{}, err
+		return server.PullResponse{}, err
 	}
 
 	return res, nil

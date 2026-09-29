@@ -21,6 +21,19 @@ import (
 	"github.com/eusean-tg/bro/internal/store"
 )
 
+var errTimedOut = errors.New("timed out")
+
+func exitCode(err error) int {
+	switch {
+	case err == nil, errors.Is(err, flag.ErrHelp):
+		return 0
+	case errors.Is(err, errTimedOut):
+		return 3
+	default:
+		return 1
+	}
+}
+
 func dbPath() (string, error) {
 	h, err := os.UserHomeDir()
 	if err != nil {
@@ -64,14 +77,14 @@ func Resolve(asFlag, wsFlag string) (Config, error) {
 }
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return
-		}
+	err := run(os.Args[1:])
+	code := exitCode(err)
 
+	if code == 1 {
 		fmt.Fprintln(os.Stderr, "bro:", err)
-		os.Exit(1)
 	}
+
+	os.Exit(code)
 }
 
 func run(args []string) error {
@@ -268,6 +281,7 @@ func runPull(
 	lst := pull.Int("last", 0, "the N most recent")
 	pk := pull.Bool("peek", false, "do not advance the cursor")
 	js := pull.Bool("json", false, "enables json output")
+	wt := pull.Duration("wait", 0, "wait for a mention")
 
 	if err := pull.Parse(rest); err != nil {
 		return err
@@ -281,6 +295,10 @@ func runPull(
 		return errors.New("since and last cannot be used together")
 	}
 
+	if set["wait"] && (set["since"] || set["last"]) {
+		return errors.New("wait cannot be used together with since or last")
+	}
+
 	if set["since"] {
 		opts.Since = snc
 	}
@@ -291,20 +309,37 @@ func runPull(
 		opts.Peek = *pk
 	}
 
+	var wait time.Duration
+	if set["wait"] {
+		wait = *wt
+	}
+
 	if cfg.Identity == "" {
 		return errors.New("pull requires identity")
 	}
 
-	res, err := c.Pull(ctx, cfg.Workspace, cfg.Identity, opts)
+	res, err := c.Pull(
+		ctx,
+		cfg.Workspace,
+		cfg.Identity,
+		opts,
+		wait,
+	)
 	if err != nil {
 		return fmt.Errorf("pull messages: %w", err)
 	}
 
 	if set["json"] && *js {
-		return json.NewEncoder(out).Encode(res)
+		if err := json.NewEncoder(out).Encode(res); err != nil {
+			return err
+		}
+	} else {
+		printMessages(out, res.Messages)
 	}
 
-	printMessages(out, res.Messages)
+	if res.TimedOut {
+		return errTimedOut
+	}
 
 	return nil
 }
