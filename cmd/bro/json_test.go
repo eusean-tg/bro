@@ -33,7 +33,7 @@ func TestRunPullJSONCarriesTheEnvelopeFields(t *testing.T) {
 			t.Fatalf("Register(%s): %v", name, err)
 		}
 	}
-	if _, err := s.Tell(ctx, "alpha", "sender", "auth done", []string{"reader"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "sender", "auth done", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 	cfg := Config{Identity: "reader", Workspace: "alpha"}
@@ -58,7 +58,7 @@ func TestRunPullJSONUsesSnakeCaseMessageFields(t *testing.T) {
 			t.Fatalf("Register(%s): %v", name, err)
 		}
 	}
-	if _, err := s.Tell(ctx, "alpha", "sender", "auth done", []string{"reader"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "sender", "auth done", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 	cfg := Config{Identity: "reader", Workspace: "alpha"}

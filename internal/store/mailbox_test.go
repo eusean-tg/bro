@@ -48,7 +48,7 @@ func TestRegisterStartsCursorAtTheWorkspaceHighWaterMark(t *testing.T) {
 
 	var last int64
 	for _, body := range []string{"first", "second", "third"} {
-		id, err := s.Tell(ctx, "alpha", "early", body, nil)
+		id, err := s.Tell(ctx, "alpha", "early", body, nil, store.KindNote)
 		if err != nil {
 			t.Fatalf("Tell(%q): %v", body, err)
 		}
@@ -73,7 +73,7 @@ func TestRegisterIgnoresOtherWorkspacesWhenSettingTheCursor(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 	for _, body := range []string{"b1", "b2", "b3"} {
-		if _, err := s.Tell(ctx, "beta", "noisy", body, nil); err != nil {
+		if _, err := s.Tell(ctx, "beta", "noisy", body, nil, store.KindNote); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}
@@ -133,7 +133,7 @@ func TestTellRejectsAnUnregisteredSender(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()
 
-	if _, err := s.Tell(ctx, "alpha", "ghost", "who am i", nil); !errors.Is(err, store.ErrNoMailbox) {
+	if _, err := s.Tell(ctx, "alpha", "ghost", "who am i", nil, store.KindNote); !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("Tell error = %v, want ErrNoMailbox", err)
 	}
 
@@ -154,7 +154,7 @@ func TestTellRejectsASenderRegisteredElsewhere(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	if _, err := s.Tell(ctx, "alpha", "worker-1", "wrong room", nil); !errors.Is(err, store.ErrNoMailbox) {
+	if _, err := s.Tell(ctx, "alpha", "worker-1", "wrong room", nil, store.KindNote); !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("Tell error = %v, want ErrNoMailbox", err)
 	}
 }

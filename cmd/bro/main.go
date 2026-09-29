@@ -154,6 +154,7 @@ func runTell(
 ) error {
 	tell := flag.NewFlagSet("tell", flag.ContinueOnError)
 	toFlag := tell.String("to", "", "name(s) for recipient, comma-separated: alice,bob")
+	kindFlag := tell.String("kind", "note", `kind of message, either "control" or "note"; defaults to "note"`)
 
 	if err := tell.Parse(rest); err != nil {
 		return err
@@ -176,7 +177,7 @@ func runTell(
 		to = strings.Split(*toFlag, ",")
 	}
 
-	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to)
+	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to, store.Kind(*kindFlag))
 	if err != nil {
 		return fmt.Errorf("unable to tell: %w", err)
 	}

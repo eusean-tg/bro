@@ -137,7 +137,7 @@ func TestLogReturnsOnlyTheWorkspacesMessagesInOrder(t *testing.T) {
 		{"beta", "b", "elsewhere"},
 		{"alpha", "a", "second"},
 	} {
-		if _, err := st.Tell(t.Context(), m[0], m[1], m[2], nil); err != nil {
+		if _, err := st.Tell(t.Context(), m[0], m[1], m[2], nil, store.KindNote); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}
@@ -190,7 +190,7 @@ func TestPullReturnsTheEnvelopeAndAdvancesTheCursor(t *testing.T) {
 	st, h := newServer(t)
 	register(t, st, "alpha", "writer")
 	register(t, st, "alpha", "reader")
-	id, err := st.Tell(t.Context(), "alpha", "writer", "news", nil)
+	id, err := st.Tell(t.Context(), "alpha", "writer", "news", nil, store.KindNote)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestPullPassesOptionsThrough(t *testing.T) {
 	register(t, st, "alpha", "reader")
 	var ids []int64
 	for _, body := range []string{"one", "two", "three"} {
-		id, err := st.Tell(t.Context(), "alpha", "writer", body, nil)
+		id, err := st.Tell(t.Context(), "alpha", "writer", body, nil, store.KindNote)
 		if err != nil {
 			t.Fatalf("Tell: %v", err)
 		}

@@ -15,6 +15,17 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
+type Kind string
+
+const (
+	KindNote    Kind = "note"
+	KindControl Kind = "control"
+)
+
+var ErrBadKind = errors.New("invalid kind")
+
+func (k Kind) Valid() bool { return k == KindNote || k == KindControl }
+
 type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -89,7 +100,12 @@ func (s *Store) Tell(
 	sender string,
 	body string,
 	to []string,
+	kind Kind,
 ) (int64, error) {
+	if !kind.Valid() {
+		return 0, fmt.Errorf("kind %q: %w", kind, ErrBadKind)
+	}
+
 	names := make([]string, 0)
 	names = append(names, sender)
 	names = append(names, to...)
@@ -129,8 +145,8 @@ func (s *Store) Tell(
 	var id int64
 	if err := tx.QueryRowContext(
 		ctx,
-		`INSERT INTO messages (workspace, sender, body, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
-		ws, sender, body, s.Now().Unix(),
+		`INSERT INTO messages (workspace, sender, body, kind, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+		ws, sender, body, kind, s.Now().Unix(),
 	).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert message: %w", err)
 	}
@@ -409,10 +425,16 @@ func (s *Store) Wakeable(ctx context.Context, ws, me string) (bool, error) {
 				JOIN mentions mnt 
 				ON msg.id = mnt.message_id
 				WHERE msg.workspace = ? AND msg.id > ? AND msg.sender <> ? AND mnt.mailbox = ?
+		) OR EXISTS(
+				SELECT 1 FROM messages msg
+				WHERE msg.workspace = ? AND kind = 'control' AND id > ?  AND sender <> ?
 		)`,
 		ws,
 		mb.Cursor,
 		me,
+		me,
+		ws,
+		mb.Cursor,
 		me,
 	).Scan(&shouldWake); err != nil {
 		return false, fmt.Errorf("wakeable should wake: %w", err)

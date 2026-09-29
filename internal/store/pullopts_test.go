@@ -15,7 +15,7 @@ func seedWorkspace(t *testing.T, s *store.Store, ws string, bodies ...string) []
 
 	ids := make([]int64, 0, len(bodies))
 	for _, body := range bodies {
-		id, err := s.Tell(t.Context(), ws, "writer", body, nil)
+		id, err := s.Tell(t.Context(), ws, "writer", body, nil, store.KindNote)
 		if err != nil {
 			t.Fatalf("Tell(%q): %v", body, err)
 		}
@@ -211,7 +211,7 @@ func TestPullWithOptionsStillExcludesTheReadersOwnMessages(t *testing.T) {
 	ctx := t.Context()
 	seedWorkspace(t, s, "alpha", "from writer")
 
-	if _, err := s.Tell(ctx, "alpha", "reader", "from reader", nil); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "reader", "from reader", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

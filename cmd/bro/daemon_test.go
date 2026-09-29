@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/eusean-tg/bro/internal/client"
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 // daemonPaths returns a socket and database path in a fresh directory.
@@ -90,7 +91,7 @@ func TestDaemonServesOverTheSocket(t *testing.T) {
 	if _, err := c.Register(ctx, "alpha", "worker", ""); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	if _, err := c.Tell(ctx, "alpha", "worker", "over the socket", nil); err != nil {
+	if _, err := c.Tell(ctx, "alpha", "worker", "over the socket", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 	msgs, err := c.Log(ctx, "alpha")

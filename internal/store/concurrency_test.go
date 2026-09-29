@@ -22,7 +22,7 @@ func TestOverlappingReadsAndWritesAllSucceed(t *testing.T) {
 		wg.Add(4)
 		go func() {
 			defer wg.Done()
-			_, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"})
+			_, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}, store.KindNote)
 			errs <- err
 		}()
 		go func() {

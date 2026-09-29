@@ -39,7 +39,18 @@ func (sv *server) tell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := sv.st.Tell(r.Context(), body.Workspace, body.Sender, body.Body, body.To)
+	if body.Kind == "" {
+		body.Kind = string(store.KindNote)
+	}
+
+	id, err := sv.st.Tell(
+		r.Context(),
+		body.Workspace,
+		body.Sender,
+		body.Body,
+		body.To,
+		store.Kind(body.Kind),
+	)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -168,6 +179,8 @@ func writeError(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, context.Canceled):
 		status = http.StatusServiceUnavailable
+	case errors.Is(err, store.ErrBadKind):
+		status = http.StatusBadRequest
 	}
 
 	writeJSON(w, status, ErrorResponse{Error: err.Error()})

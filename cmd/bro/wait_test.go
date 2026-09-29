@@ -28,7 +28,7 @@ func waitRoom(t *testing.T) (*store.Store, Config) {
 
 func TestRunPullWaitReturnsForAMention(t *testing.T) {
 	s, cfg := waitRoom(t)
-	if _, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func TestRunPullWaitReturnsForAMention(t *testing.T) {
 
 func TestRunPullWaitTimeoutIsErrTimedOutAndStillPrints(t *testing.T) {
 	s, cfg := waitRoom(t)
-	if _, err := s.Tell(t.Context(), "alpha", "writer", "to the room", nil); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "writer", "to the room", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -109,7 +109,7 @@ func TestRunPullWaitRejectsSinceAndLast(t *testing.T) {
 
 func TestRunPullWaitWorksWithPeek(t *testing.T) {
 	s, cfg := waitRoom(t)
-	if _, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

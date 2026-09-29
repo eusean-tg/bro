@@ -176,7 +176,7 @@ func TestLaterCallsReuseTheSpawnedDaemon(t *testing.T) {
 	if _, err := c.Register(ctx, "alpha", "worker", ""); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	if _, err := c.Tell(ctx, "alpha", "worker", "persisted", nil); err != nil {
+	if _, err := c.Tell(ctx, "alpha", "worker", "persisted", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

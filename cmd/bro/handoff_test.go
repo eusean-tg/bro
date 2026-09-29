@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/eusean-tg/bro/internal/client"
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 // The handoff test needs real daemons in separate processes, built from
@@ -58,7 +59,7 @@ func TestANewerClientReplacesAnOlderDaemon(t *testing.T) {
 	if _, err := old.Register(ctx, "alpha", "worker", ""); err != nil {
 		t.Fatalf("Register via the old build: %v", err)
 	}
-	if _, err := old.Tell(ctx, "alpha", "worker", "written by old", nil); err != nil {
+	if _, err := old.Tell(ctx, "alpha", "worker", "written by old", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell via the old build: %v", err)
 	}
 

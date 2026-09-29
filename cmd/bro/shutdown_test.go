@@ -32,7 +32,7 @@ func TestAWaitMovesToTheNextDaemon(t *testing.T) {
 			t.Fatalf("Register(%s): %v", name, err)
 		}
 	}
-	if _, err := c.Tell(ctx, "alpha", "writer", "said before the restart", nil); err != nil {
+	if _, err := c.Tell(ctx, "alpha", "writer", "said before the restart", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -60,7 +60,7 @@ func TestAWaitMovesToTheNextDaemon(t *testing.T) {
 	// If the old daemon is still draining its waiter, this tell cannot
 	// start a new one: the old daemon holds the lock for Shutdown's full
 	// timeout.
-	if _, err := c.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := c.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell after the restart: %v; did stopping the daemon cancel the waiting request (BaseContext)?", err)
 	}
 

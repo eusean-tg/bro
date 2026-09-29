@@ -11,6 +11,7 @@ type TellRequest struct {
 	Sender    string   `json:"sender"`
 	Body      string   `json:"body"`
 	To        []string `json:"to"`
+	Kind      string   `json:"kind"`
 }
 
 type TellResponse struct {

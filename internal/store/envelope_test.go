@@ -25,7 +25,7 @@ func TestPullReportsTheWorkspaceHeadEvenWhenTheReaderSentItselfTheNewest(t *test
 	ctx := t.Context()
 	seedWorkspace(t, s, "alpha", "from writer")
 
-	id, err := s.Tell(ctx, "alpha", "reader", "my own", nil)
+	id, err := s.Tell(ctx, "alpha", "reader", "my own", nil, store.KindNote)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestPullUnreadCountExcludesTheReadersOwnMessages(t *testing.T) {
 	ctx := t.Context()
 	seedWorkspace(t, s, "alpha", "from writer")
 
-	if _, err := s.Tell(ctx, "alpha", "reader", "my own", nil); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "reader", "my own", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

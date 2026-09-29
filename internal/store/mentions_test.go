@@ -20,7 +20,7 @@ func TestPullMarksAMessageAddressedToTheReader(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -42,7 +42,7 @@ func TestPullDoesNotMarkAMessageAddressedToSomeoneElse(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "for other", []string{"other"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "for other", []string{"other"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestPullMarksAMessageAddressedToSeveralMailboxes(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "for both", []string{"reader", "other"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "for both", []string{"reader", "other"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestPullLeavesAnUnaddressedMessageUnmarked(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "to the room", nil); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "to the room", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -107,7 +107,7 @@ func TestTellRejectsAnUnknownRecipient(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "hi", []string{"ghost"}); !errors.Is(err, store.ErrNoMailbox) {
+	if _, err := s.Tell(ctx, "alpha", "writer", "hi", []string{"ghost"}, store.KindNote); !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("Tell error = %v, want ErrNoMailbox", err)
 	}
 }
@@ -118,7 +118,7 @@ func TestTellStoresNothingWhenOneRecipientIsUnknown(t *testing.T) {
 	room(t, s)
 
 	// reader exists, ghost does not. The message must not survive.
-	if _, err := s.Tell(ctx, "alpha", "writer", "half addressed", []string{"reader", "ghost"}); err == nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "half addressed", []string{"reader", "ghost"}, store.KindNote); err == nil {
 		t.Fatal("Tell succeeded with an unknown recipient, want an error")
 	}
 
@@ -137,7 +137,7 @@ func TestTellRejectsARecipientFromAnotherWorkspace(t *testing.T) {
 	room(t, s)
 	register(t, s, "beta", "elsewhere")
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "hi", []string{"elsewhere"}); !errors.Is(err, store.ErrNoMailbox) {
+	if _, err := s.Tell(ctx, "alpha", "writer", "hi", []string{"elsewhere"}, store.KindNote); !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("Tell error = %v, want ErrNoMailbox", err)
 	}
 }
@@ -147,7 +147,7 @@ func TestLogLeavesMentionedUnset(t *testing.T) {
 	ctx := t.Context()
 	room(t, s)
 
-	if _, err := s.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

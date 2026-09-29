@@ -10,7 +10,7 @@ import (
 func tell(t *testing.T, s *store.Store, ws, sender, body string, to ...string) {
 	t.Helper()
 
-	if _, err := s.Tell(t.Context(), ws, sender, body, to); err != nil {
+	if _, err := s.Tell(t.Context(), ws, sender, body, to, store.KindNote); err != nil {
 		t.Fatalf("Tell(%s from %s): %v", body, sender, err)
 	}
 }

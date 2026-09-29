@@ -45,7 +45,7 @@ func TestPullReportsATimedOutWait(t *testing.T) {
 	st, c := newClient(t)
 	register(t, st, "alpha", "writer")
 	register(t, st, "alpha", "reader")
-	if _, err := c.Tell(t.Context(), "alpha", "writer", "to the room", nil); err != nil {
+	if _, err := c.Tell(t.Context(), "alpha", "writer", "to the room", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -79,7 +79,7 @@ func TestPullReturnsOnceAMentionArrives(t *testing.T) {
 	// Whether the tell lands before or after the pull starts waiting, the
 	// pull must see it: before, its first check finds it; after, the
 	// publish wakes it.
-	if _, err := c.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}); err != nil {
+	if _, err := c.Tell(t.Context(), "alpha", "writer", "for you", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestOtherFailuresAreNotRetried(t *testing.T) {
 
 	// A 500 may come after the write committed; resending a tell could post
 	// it twice. Only 412 and 503 promise the daemon changed nothing.
-	if _, err := c.Tell(t.Context(), "alpha", "writer", "once", nil); err == nil {
+	if _, err := c.Tell(t.Context(), "alpha", "writer", "once", nil, store.KindNote); err == nil {
 		t.Fatal("Tell succeeded against a server that answers 500")
 	}
 	mu.Lock()

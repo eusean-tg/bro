@@ -60,7 +60,7 @@ func TestTellReturnsTheStoredID(t *testing.T) {
 	register(t, st, "alpha", "sender")
 	register(t, st, "alpha", "reader")
 
-	id, err := c.Tell(t.Context(), "alpha", "sender", "hello", []string{"reader"})
+	id, err := c.Tell(t.Context(), "alpha", "sender", "hello", []string{"reader"}, store.KindNote)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestTellToAnUnknownRecipientIsErrNoMailbox(t *testing.T) {
 	st, c := newClient(t)
 	register(t, st, "alpha", "sender")
 
-	_, err := c.Tell(t.Context(), "alpha", "sender", "hi", []string{"ghost"})
+	_, err := c.Tell(t.Context(), "alpha", "sender", "hi", []string{"ghost"}, store.KindNote)
 	if !errors.Is(err, store.ErrNoMailbox) {
 		t.Fatalf("err = %v, want store.ErrNoMailbox", err)
 	}
@@ -94,7 +94,7 @@ func TestLogReturnsTheMessagesInOrder(t *testing.T) {
 	st, c := newClient(t)
 	register(t, st, "alpha", "a")
 	for _, body := range []string{"first", "second"} {
-		if _, err := st.Tell(t.Context(), "alpha", "a", body, nil); err != nil {
+		if _, err := st.Tell(t.Context(), "alpha", "a", body, nil, store.KindNote); err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
 	}
@@ -148,7 +148,7 @@ func TestPullReturnsTheResultAndAdvancesTheCursor(t *testing.T) {
 	st, c := newClient(t)
 	register(t, st, "alpha", "writer")
 	register(t, st, "alpha", "reader")
-	id, err := st.Tell(t.Context(), "alpha", "writer", "news", nil)
+	id, err := st.Tell(t.Context(), "alpha", "writer", "news", nil, store.KindNote)
 	if err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestPullSendsTheOptions(t *testing.T) {
 	register(t, st, "alpha", "reader")
 	var ids []int64
 	for _, body := range []string{"one", "two", "three"} {
-		id, err := st.Tell(t.Context(), "alpha", "writer", body, nil)
+		id, err := st.Tell(t.Context(), "alpha", "writer", body, nil, store.KindNote)
 		if err != nil {
 			t.Fatalf("Tell: %v", err)
 		}
@@ -274,7 +274,7 @@ func TestNewDialsTheUnixSocket(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	register(t, st, "alpha", "a")
-	if _, err := st.Tell(t.Context(), "alpha", "a", "over the socket", nil); err != nil {
+	if _, err := st.Tell(t.Context(), "alpha", "a", "over the socket", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

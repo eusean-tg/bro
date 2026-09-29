@@ -127,9 +127,10 @@ func (c *Client) Tell(
 	sender string,
 	body string,
 	to []string,
+	kind store.Kind,
 ) (int64, error) {
 	var res server.TellResponse
-	req := server.TellRequest{Workspace: ws, Sender: sender, Body: body, To: to}
+	req := server.TellRequest{Workspace: ws, Sender: sender, Body: body, To: to, Kind: string(kind)}
 
 	if err := c.do(ctx, "/tell", req, &res); err != nil {
 		return 0, err

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 func TestRunPullWritesTheMessagesItReturns(t *testing.T) {
@@ -24,7 +26,7 @@ func TestRunPullWritesTheMessagesItReturns(t *testing.T) {
 		t.Errorf("wrote %q, want nothing before any new traffic", first.String())
 	}
 
-	if _, err := s.Tell(t.Context(), "alpha", "worker-2", "auth done", nil); err != nil {
+	if _, err := s.Tell(t.Context(), "alpha", "worker-2", "auth done", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 

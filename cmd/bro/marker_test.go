@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 // lineContaining returns the rendered line holding body, or fails.
@@ -35,7 +37,7 @@ func TestRunPullMarksTheLinesThatNameTheReader(t *testing.T) {
 		{"ambient chatter", nil},
 		{"addressed to someone else", []string{"other"}},
 	} {
-		if _, err := s.Tell(ctx, "alpha", "sender", m.body, m.to); err != nil {
+		if _, err := s.Tell(ctx, "alpha", "sender", m.body, m.to, store.KindNote); err != nil {
 			t.Fatalf("Tell(%q): %v", m.body, err)
 		}
 	}
@@ -65,7 +67,7 @@ func TestRunLogNeverMarksMentions(t *testing.T) {
 			t.Fatalf("Register(%s): %v", name, err)
 		}
 	}
-	if _, err := s.Tell(ctx, "alpha", "sender", "addressed to reader", []string{"reader"}); err != nil {
+	if _, err := s.Tell(ctx, "alpha", "sender", "addressed to reader", []string{"reader"}, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
 
