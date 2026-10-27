@@ -34,6 +34,7 @@ func TestARequestCancelledByShutdownIs503(t *testing.T) {
 		{"/pull", `{"workspace":"alpha","me":"reader"}`},
 		{"/log", `{"workspace":"alpha"}`},
 		{"/register", `{"workspace":"alpha","name":"late"}`},
+		{"/close", `{"workspace":"alpha","sender":"writer","body":"done"}`},
 	} {
 		wantError(t, postCancelled(h, c.path, c.body), http.StatusServiceUnavailable)
 	}

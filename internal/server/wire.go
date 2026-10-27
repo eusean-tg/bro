@@ -50,3 +50,9 @@ type PullResponse struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+type CloseRequest struct {
+	Workspace string `json:"workspace"`
+	Sender    string `json:"sender"`
+	Body      string `json:"body"`
+}

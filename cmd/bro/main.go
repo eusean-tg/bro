@@ -21,7 +21,10 @@ import (
 	"github.com/eusean-tg/bro/internal/store"
 )
 
-var errTimedOut = errors.New("timed out")
+var (
+	errTimedOut = errors.New("timed out")
+	errClosed   = errors.New("closed")
+)
 
 func exitCode(err error) int {
 	switch {
@@ -29,6 +32,8 @@ func exitCode(err error) int {
 		return 0
 	case errors.Is(err, errTimedOut):
 		return 3
+	case errors.Is(err, errClosed):
+		return 4
 	default:
 		return 1
 	}
@@ -140,6 +145,8 @@ func run(args []string) error {
 		return runRegister(ctx, c, cfg, os.Stdout, rest)
 	case "pull":
 		return runPull(ctx, c, cfg, os.Stdout, rest)
+	case "close":
+		return runClose(ctx, c, cfg, os.Stdout, rest)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -180,6 +187,41 @@ func runTell(
 	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to, store.Kind(*kindFlag))
 	if err != nil {
 		return fmt.Errorf("unable to tell: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(out, "%d\n", id)
+
+	return nil
+}
+
+func runClose(
+	ctx context.Context,
+	c *client.Client,
+	cfg Config,
+	out io.Writer,
+	rest []string,
+) error {
+	cls := flag.NewFlagSet("close", flag.ContinueOnError)
+
+	if err := cls.Parse(rest); err != nil {
+		return err
+	}
+
+	msg := "unit complete"
+	if cls.NArg() > 0 {
+		a := strings.TrimSpace(cls.Arg(0))
+		if a != "" {
+			msg = a
+		}
+	}
+
+	if cfg.Identity == "" {
+		return errors.New("close requires identity")
+	}
+
+	id, err := c.CloseWorkspace(ctx, cfg.Workspace, cfg.Identity, msg)
+	if err != nil {
+		return err
 	}
 
 	_, _ = fmt.Fprintf(out, "%d\n", id)
@@ -336,6 +378,10 @@ func runPull(
 		}
 	} else {
 		printMessages(out, res.Messages)
+	}
+
+	if res.Closed {
+		return errClosed
 	}
 
 	if res.TimedOut {

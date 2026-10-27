@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   workspace   TEXT    NOT NULL,
   name        TEXT    NOT NULL,
   description TEXT    NOT NULL DEFAULT '',
+  joined_id   INTEGER NOT NULL DEFAULT 0,
   cursor      INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
   PRIMARY KEY (workspace, name)
@@ -27,5 +28,5 @@ CREATE TABLE IF NOT EXISTS mailboxes (
 
 CREATE TABLE IF NOT EXISTS workspaces (
   name       TEXT    PRIMARY KEY,
-  closed_id INTEGER                        -- id of the unit-complete message
+  closed_id  INTEGER                        -- id of the unit-complete message
 );

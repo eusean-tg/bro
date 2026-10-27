@@ -143,15 +143,16 @@ This is what lets one workspace hold a sequence of units. `$BRO_WORKSPACE` is fi
 the life of a `claude` process and everything it spawns, so a workspace that closed
 forever would force a restart before the next unit. The next unit's workers register
 after the close, start open, and are unaffected by it; the orchestrator that closed
-carries on. Each `bro close` writes a new control message and moves `closed_id`, so a
-repeated close ends the same workers again and nothing else.
+carries on. Each `bro close` writes a new control message and moves `closed_id`, so it
+ends every mailbox registered before it except its sender, the next unit's workers
+included.
 
 The wake check treats a closed mailbox as always wakeable, so a closed worker's wait
 returns at once and its pull exits 4 — including a worker that has already read the
-close and waits again. `close` publishes to the hub like any other write. The waiter subscribes before it
-checks (see [The wait loop](#the-wait-loop)), so a close is covered exactly as a mention
-is: a worker that begins waiting just after the close still sees it and exits instead
-of blocking forever.
+close and waits again. `close` publishes to the hub like any other write. The waiter
+subscribes before it checks (see [The wait loop](#the-wait-loop)), so a close is
+covered exactly as a mention is: a worker that begins waiting just after the close
+still sees it and exits instead of blocking forever.
 
 ### Late registrants
 
@@ -169,7 +170,7 @@ bro list                             # mailboxes in this workspace
 bro tell [--to a,b] [--kind control] MESSAGE
 bro pull [--wait DURATION] [--peek] [--since N] [--last N] [--json]
 bro log [--follow]                   # whole-workspace transcript, for humans
-bro close                            # unit-complete
+bro close [MESSAGE]                  # MESSAGE defaults to "unit complete"
 bro unregister [-n NAME] [--force]
 bro daemon                           # usually spawned by the client
 ```

@@ -189,3 +189,23 @@ func (c *Client) Pull(
 
 	return res, nil
 }
+
+func (c *Client) CloseWorkspace(
+	ctx context.Context,
+	ws,
+	me,
+	body string,
+) (int64, error) {
+	var res server.TellResponse
+	req := server.CloseRequest{
+		Workspace: ws,
+		Sender:    me,
+		Body:      body,
+	}
+
+	if err := c.do(ctx, "/close", req, &res); err != nil {
+		return 0, err
+	}
+
+	return res.ID, nil
+}

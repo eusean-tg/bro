@@ -28,6 +28,7 @@ func New(st *store.Store, version string, stop func()) http.Handler {
 	mux.HandleFunc("POST /log", sv.log)
 	mux.HandleFunc("POST /register", sv.register)
 	mux.HandleFunc("POST /pull", sv.pull)
+	mux.HandleFunc("POST /close", sv.close)
 
 	return withVersion(version, stop, mux)
 }
@@ -130,6 +131,24 @@ func (sv *server) pull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, PullResponse{PullResult: pr, TimedOut: timedOut})
+}
+
+func (sv *server) close(w http.ResponseWriter, r *http.Request) {
+	var body CloseRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	id, err := sv.st.CloseWorkspace(r.Context(), body.Workspace, body.Sender, body.Body)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	sv.hub.Publish(body.Workspace)
+
+	writeJSON(w, http.StatusOK, TellResponse{ID: id})
 }
 
 func (sv *server) waitWithin(parent context.Context, d time.Duration, ws, me string) error {

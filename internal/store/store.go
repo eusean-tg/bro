@@ -29,6 +29,7 @@ func (k Kind) Valid() bool { return k == KindNote || k == KindControl }
 type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 type Store struct {
@@ -49,6 +50,7 @@ type PullResult struct {
 	Messages    []Message `json:"messages"`
 	LatestID    int64     `json:"latest_id"`
 	UnreadCount int       `json:"unread_count"`
+	Closed      bool      `json:"closed"`
 }
 
 var (
@@ -59,6 +61,7 @@ var (
 type Mailbox struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	JoinedID    int64  `json:"joined_id"`
 	Cursor      int64  `json:"cursor"`
 	CreatedAt   int64  `json:"created_at"`
 }
@@ -102,34 +105,60 @@ func (s *Store) Tell(
 	to []string,
 	kind Kind,
 ) (int64, error) {
-	if !kind.Valid() {
-		return 0, fmt.Errorf("kind %q: %w", kind, ErrBadKind)
-	}
-
-	names := make([]string, 0)
-	names = append(names, sender)
-	names = append(names, to...)
-	names = dedupStringSlice(names)
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	mbs, err := fetchMailboxes(ctx, tx, ws, names)
+	id, err := writeMessage(ctx, tx, ws, sender, body, to, kind, s.Now().Unix())
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+func writeMessage(
+	ctx context.Context,
+	q querier,
+	ws,
+	sender,
+	body string,
+	to []string,
+	kind Kind,
+	timestamp int64,
+) (int64, error) {
+	if !kind.Valid() {
+		return 0, fmt.Errorf("kind %q: %w", kind, ErrBadKind)
+	}
+
+	recipients := dedupStringSlice(to)
+
+	// check sender mailbox existence
+	_, err := fetchMailbox(ctx, q, ws, sender)
 	if err != nil {
 		return 0, fmt.Errorf("sender mailbox: %w", err)
 	}
 
-	if len(mbs) != len(names) {
+	// check recipient mailbox existences
+	mbs, err := fetchMailboxes(ctx, q, ws, recipients)
+	if err != nil {
+		return 0, fmt.Errorf("recipient mailboxes: %w", err)
+	}
+
+	if len(mbs) != len(recipients) {
 		nmap := make(map[string]bool)
 		for _, n := range mbs {
 			nmap[n.Name] = true
 		}
 
 		missing := make([]string, 0)
-		for _, n := range names {
+		for _, n := range recipients {
 			if ok := nmap[n]; !ok {
 				missing = append(missing, n)
 			}
@@ -143,16 +172,16 @@ func (s *Store) Tell(
 	}
 
 	var id int64
-	if err := tx.QueryRowContext(
+	if err := q.QueryRowContext(
 		ctx,
 		`INSERT INTO messages (workspace, sender, body, kind, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id`,
-		ws, sender, body, kind, s.Now().Unix(),
+		ws, sender, body, kind, timestamp,
 	).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert message: %w", err)
 	}
 
-	for _, v := range to {
-		_, err := tx.ExecContext(
+	for _, v := range recipients {
+		_, err := q.ExecContext(
 			ctx,
 			`INSERT INTO mentions (message_id, mailbox) VALUES (?, ?)`,
 			id,
@@ -161,10 +190,6 @@ func (s *Store) Tell(
 		if err != nil {
 			return 0, err
 		}
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, err
 	}
 
 	return id, nil
@@ -199,13 +224,17 @@ func (s *Store) Register(
 
 	err := s.db.QueryRowContext(
 		ctx,
-		`INSERT INTO mailboxes (workspace, name, description, cursor, created_at) VALUES (?,?,?,COALESCE((SELECT MAX(id) FROM messages WHERE workspace = ?), 0),?) ON CONFLICT (workspace,name) DO NOTHING RETURNING name, description, cursor, created_at`,
+		`INSERT INTO mailboxes (workspace, name, description, joined_id, cursor, created_at)
+		VALUES (?,?,?,COALESCE((SELECT MAX(id) FROM messages WHERE workspace = ?), 0),COALESCE((SELECT MAX(id) FROM messages WHERE workspace = ?), 0),?)
+		ON CONFLICT (workspace,name)
+		DO NOTHING RETURNING name, description, cursor, joined_id, created_at`,
 		ws,
 		name,
 		desc,
 		ws,
+		ws,
 		s.Now().Unix(),
-	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt)
+	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.JoinedID, &mb.CreatedAt)
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -271,10 +300,10 @@ func fetchMailbox(
 	var mb Mailbox
 	err := q.QueryRowContext(
 		ctx,
-		`SELECT name, description, cursor, created_at FROM mailboxes WHERE name = ? AND workspace = ?`,
+		`SELECT name, description, cursor, joined_id, created_at FROM mailboxes WHERE name = ? AND workspace = ?`,
 		name,
 		ws,
-	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt)
+	).Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.JoinedID, &mb.CreatedAt)
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -351,8 +380,14 @@ func (s *Store) Pull(
 		}
 	}
 
+	closed, err := isClosed(ctx, tx, ws, me)
+	if err != nil {
+		return PullResult{}, err
+	}
+
 	out := PullResult{
 		Messages: []Message{},
+		Closed:   closed,
 	}
 	for rows.Next() {
 		var m Message
@@ -412,6 +447,15 @@ func (s *Store) Pull(
 }
 
 func (s *Store) Wakeable(ctx context.Context, ws, me string) (bool, error) {
+	closed, err := isClosed(ctx, s.db, ws, me)
+	if err != nil {
+		return false, err
+	}
+
+	if closed {
+		return true, nil
+	}
+
 	mb, err := fetchMailbox(ctx, s.db, ws, me)
 	if err != nil {
 		return false, fmt.Errorf("wakeable fetch mailbox: %w", err)
@@ -441,4 +485,80 @@ func (s *Store) Wakeable(ctx context.Context, ws, me string) (bool, error) {
 	}
 
 	return shouldWake, nil
+}
+
+func (s *Store) CloseWorkspace(ctx context.Context, ws, sender, body string) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	id, err := writeMessage(ctx, tx, ws, sender, body, []string{}, KindControl, s.Now().Unix())
+	if err != nil {
+		return 0, err
+	}
+
+	// Upsert closed_id
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO workspaces(name, closed_id) VALUES (?, ?)
+		ON CONFLICT (name) DO UPDATE SET closed_id = excluded.closed_id`,
+		ws, id,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+func isClosed(ctx context.Context, q querier, ws, me string) (bool, error) {
+	mb, err := fetchMailbox(ctx, q, ws, me)
+	if err != nil {
+		return false, err
+	}
+
+	var wsClosedID sql.Null[int64]
+	if err := q.QueryRowContext(
+		ctx,
+		`SELECT closed_id FROM workspaces WHERE name = ?`,
+		ws,
+	).Scan(&wsClosedID); err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return false, nil
+		default:
+			return false, err
+		}
+	}
+
+	if !wsClosedID.Valid {
+		return false, nil
+	}
+
+	closerIsMe := false
+	if err := q.QueryRowContext(
+		ctx,
+		`SELECT
+			CASE
+				WHEN m.sender = ? THEN 1
+				ELSE 0
+			END AS is_me
+		FROM messages m WHERE m.id = ?`,
+		me,
+		wsClosedID.V,
+	).Scan(&closerIsMe); err != nil {
+		return false, fmt.Errorf("check ws closed: %w", err)
+	}
+
+	if closerIsMe || wsClosedID.V <= mb.JoinedID {
+		return false, nil
+	}
+
+	return true, nil
 }
