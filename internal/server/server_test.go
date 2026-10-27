@@ -24,7 +24,7 @@ func newServer(t *testing.T) (*store.Store, http.Handler) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	return st, server.New(st, testVersion, func() {})
+	return st, server.New(st, testVersion, func() {}, func() bool { return true })
 }
 
 // post sends body to path the way the client will: POST, JSON, with the

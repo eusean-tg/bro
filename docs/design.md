@@ -248,11 +248,32 @@ is a hash of the running executable, so every rebuild — `go run` included — 
 new one; a hand-maintained version string would stay identical across exactly the
 rebuilds this check exists to catch.
 
-On mismatch the daemon answers `412 Precondition Failed` and shuts itself down. The
-client retries, finds nothing listening, and the ordinary spawn path starts the current
-build. The client never kills a process, so there is no PID file to go stale. This
-removes an entire category of "why isn't my rebuild taking effect" that is hard to
-recognize from the inside.
+The version is the first 12 hex characters of the executable's SHA-256, and every
+comparison uses that one form.
+
+A mismatch says the two builds differ, not which one is stale. The daemon settles that
+by re-hashing its own executable on disk:
+
+- **The file no longer hashes to the daemon's version** (rebuilt in place, replaced, or
+  deleted): the daemon is the stale side. It answers `412 Precondition Failed` and
+  shuts itself down. The client retries, finds nothing listening, and the ordinary
+  spawn path starts the current build.
+- **The file still matches:** the client is the stale side, a process started before
+  the rebuild, such as a worker still waiting. The daemon serves it. Retiring instead
+  would let each old waiter end every replacement daemon in turn. The wire is JSON, and
+  `encoding/json` ignores unknown fields and zero-fills missing ones, so an older
+  client and a newer daemon disagree only about features the older client does not
+  use.
+
+The re-hash reads the whole binary, so it runs only on a mismatch; a matching request,
+or one with no `Bro-Version` header, never triggers it. A daemon spawned by `go run`
+cannot re-hash its binary, because `go run` deletes its build when it exits, so it
+retires on any mismatch, including one from an older client. The hooks run the
+installed `bro`, a fixed file, so they always get the full check.
+
+The client never kills a process, so there is no PID file to go stale. This removes an
+entire category of "why isn't my rebuild taking effect" that is hard to recognize from
+the inside.
 
 The client retries a request only on `412` and `503`, the two responses that guarantee
 the daemon changed nothing. Any other failure may have committed — a `tell` that fails

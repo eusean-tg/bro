@@ -28,17 +28,39 @@ func daemonPaths(t *testing.T) (dir, sock, db string) {
 	return dir, filepath.Join(dir, "s.sock"), filepath.Join(dir, "data.db")
 }
 
-// startDaemon runs runDaemon in the background and waits until its socket
-// accepts connections. Cancelling the returned func stops it; the channel
-// receives runDaemon's return value.
+// testExe returns the path of the running test binary, which stands in
+// for bro's own executable.
+func testExe(t *testing.T) string {
+	t.Helper()
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	return exe
+}
+
+// startDaemon runs runDaemon in the background at version "test" and
+// waits until its socket accepts connections. The test binary never
+// hashes to "test", so a mismatched request retires this daemon.
+// Cancelling the returned func stops it; the channel receives runDaemon's
+// return value.
 func startDaemon(t *testing.T, sock, db string) (context.CancelFunc, <-chan error) {
 	t.Helper()
 
+	return startDaemonAt(t, sock, db, "test")
+}
+
+// startDaemonAt is startDaemon at the given version.
+func startDaemonAt(t *testing.T, sock, db, version string) (context.CancelFunc, <-chan error) {
+	t.Helper()
+
+	exe := testExe(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	errc := make(chan error, 1)
 	done := make(chan struct{})
 	go func() {
-		errc <- runDaemon(ctx, sock, db, "test")
+		errc <- runDaemon(ctx, sock, db, exe, version)
 		close(done)
 	}()
 	t.Cleanup(func() {
@@ -135,7 +157,7 @@ func TestASecondDaemonExitsQuietlyAndLeavesTheFirstServing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	start := time.Now()
-	if err := runDaemon(ctx, sock, db, "test"); err != nil {
+	if err := runDaemon(ctx, sock, db, testExe(t), "test"); err != nil {
 		t.Errorf("second runDaemon = %v, want nil", err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {

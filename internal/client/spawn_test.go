@@ -75,7 +75,7 @@ func fakeDaemon(mode string) int {
 		return 1
 	}
 	defer l.Close()
-	go func() { _ = http.Serve(l, server.New(st, testVersion, func() {})) }()
+	go func() { _ = http.Serve(l, server.New(st, testVersion, func() {}, func() bool { return true })) }()
 
 	// Detached, so nothing will signal it: exit once the test removes the
 	// directory, or after a ceiling in case the test never does.

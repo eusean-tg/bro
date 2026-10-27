@@ -17,7 +17,7 @@ type server struct {
 	hub *hub.Hub
 }
 
-func New(st *store.Store, version string, stop func()) http.Handler {
+func New(st *store.Store, version string, stop func(), stale func() bool) http.Handler {
 	sv := &server{
 		st:  st,
 		hub: hub.New(),
@@ -30,7 +30,7 @@ func New(st *store.Store, version string, stop func()) http.Handler {
 	mux.HandleFunc("POST /pull", sv.pull)
 	mux.HandleFunc("POST /close", sv.close)
 
-	return withVersion(version, stop, mux)
+	return withVersion(version, stop, stale, mux)
 }
 
 func (sv *server) tell(w http.ResponseWriter, r *http.Request) {
@@ -205,10 +205,10 @@ func writeError(w http.ResponseWriter, err error) {
 	writeJSON(w, status, ErrorResponse{Error: err.Error()})
 }
 
-func withVersion(version string, stop func(), next http.Handler) http.Handler {
+func withVersion(version string, stop func(), stale func() bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v := r.Header.Get("Bro-Version")
-		if v != "" && v != version {
+		if v != "" && v != version && stale() {
 			w.Header().Set("Connection", "close")
 			writeJSON(
 				w,

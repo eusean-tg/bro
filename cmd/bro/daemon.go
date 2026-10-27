@@ -17,7 +17,7 @@ import (
 
 var errDaemonRunning = errors.New("daemon already running")
 
-func runDaemon(ctx context.Context, sock, db, version string) error {
+func runDaemon(ctx context.Context, sock, db, exe, version string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -42,8 +42,12 @@ func runDaemon(ctx context.Context, sock, db, version string) error {
 		return err
 	}
 
+	stale := func() bool {
+		return exeChanged(exe, version)
+	}
+
 	srv := &http.Server{
-		Handler:     server.New(st, version, stop),
+		Handler:     server.New(st, version, stop, stale),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 

@@ -126,7 +126,7 @@ func run(args []string) error {
 	}
 
 	if global.Arg(0) == "daemon" {
-		return runDaemon(ctx, sock, db, ver[:12])
+		return runDaemon(ctx, sock, db, exe, ver)
 	}
 
 	cfg, err := Resolve(*identity, *workspace)
@@ -134,7 +134,7 @@ func run(args []string) error {
 		return err
 	}
 
-	c := client.New(sock, exe, ver[:12])
+	c := client.New(sock, exe, ver)
 
 	switch cmd, rest := global.Arg(0), global.Args()[1:]; cmd {
 	case "tell":
@@ -403,5 +403,14 @@ func buildVersion(exe string) (string, error) {
 		return "", err
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil))[:12], nil
+}
+
+func exeChanged(exe, version string) bool {
+	v, err := buildVersion(exe)
+	if err != nil {
+		return true
+	}
+
+	return v != version
 }

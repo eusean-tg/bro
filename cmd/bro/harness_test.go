@@ -15,7 +15,7 @@ import (
 func clientFor(t *testing.T, s *store.Store) *client.Client {
 	t.Helper()
 
-	ts := httptest.NewServer(server.New(s, "test", func() {}))
+	ts := httptest.NewServer(server.New(s, "test", func() {}, func() bool { return true }))
 	t.Cleanup(ts.Close)
 
 	return &client.Client{BaseURL: ts.URL, HTTP: ts.Client(), Version: "test"}

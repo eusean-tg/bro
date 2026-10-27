@@ -11,9 +11,18 @@ import (
 	"github.com/eusean-tg/bro/internal/store"
 )
 
-// versioned returns a handler at version "v1" whose stop func records
-// whether it was called.
-func versioned(t *testing.T) (*store.Store, http.Handler, *bool) {
+// daemon is a handler at version "v1" that records what the version check
+// did: whether it called stop, and how many times it asked stale.
+type daemon struct {
+	st      *store.Store
+	h       http.Handler
+	stopped bool
+	checks  int
+}
+
+// versioned returns a daemon at version "v1". stale is the answer its
+// executable check gives: true means the binary on disk was rebuilt.
+func versioned(t *testing.T, stale bool) *daemon {
 	t.Helper()
 
 	st, err := store.Open(filepath.Join(t.TempDir(), "bro.db"))
@@ -22,8 +31,12 @@ func versioned(t *testing.T) (*store.Store, http.Handler, *bool) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	stopped := new(bool)
-	return st, server.New(st, "v1", func() { *stopped = true }), stopped
+	d := &daemon{st: st}
+	d.h = server.New(st, "v1",
+		func() { d.stopped = true },
+		func() bool { d.checks++; return stale },
+	)
+	return d
 }
 
 // send POSTs body to path with the given Bro-Version; "" sends no header.
@@ -38,55 +51,77 @@ func send(h http.Handler, path, body, version string) *httptest.ResponseRecorder
 	return rec
 }
 
-func TestAMismatchedVersionIs412AndStopsTheDaemon(t *testing.T) {
-	_, h, stopped := versioned(t)
+func TestAMismatchAtAStaleDaemonIs412AndStopsIt(t *testing.T) {
+	d := versioned(t, true)
 
-	rec := send(h, "/log", `{"workspace":"alpha"}`, "v2")
+	rec := send(d.h, "/log", `{"workspace":"alpha"}`, "v2")
 	wantError(t, rec, http.StatusPreconditionFailed)
-	if !*stopped {
-		t.Error("stop was not called; a daemon that sees a newer client must retire")
+	if !d.stopped {
+		t.Error("stop was not called; a daemon whose binary was rebuilt must retire")
 	}
 }
 
 func TestA412ClosesTheConnection(t *testing.T) {
-	_, h, _ := versioned(t)
+	d := versioned(t, true)
 
 	// The daemon is about to exit, so the client must not reuse this
 	// connection for its retry.
-	rec := send(h, "/log", `{"workspace":"alpha"}`, "v2")
+	rec := send(d.h, "/log", `{"workspace":"alpha"}`, "v2")
 	if got := rec.Header().Get("Connection"); got != "close" {
 		t.Errorf("Connection header = %q, want close", got)
 	}
 }
 
-func TestAMismatchedRequestNeverReachesTheHandler(t *testing.T) {
-	st, h, _ := versioned(t)
+func TestAMismatchAtAStaleDaemonNeverReachesTheHandler(t *testing.T) {
+	d := versioned(t, true)
 
-	send(h, "/register", `{"workspace":"alpha","name":"worker"}`, "v2")
+	send(d.h, "/register", `{"workspace":"alpha","name":"worker"}`, "v2")
 
-	if _, err := st.Mailbox(t.Context(), "alpha", "worker"); err == nil {
-		t.Error("the mailbox was registered by a request with the wrong version")
+	if _, err := d.st.Mailbox(t.Context(), "alpha", "worker"); err == nil {
+		t.Error("the mailbox was registered by a request the stale daemon refused")
 	}
 }
 
-func TestAMatchingVersionIsServed(t *testing.T) {
-	_, h, stopped := versioned(t)
+func TestAMismatchAtACurrentDaemonIsServed(t *testing.T) {
+	d := versioned(t, false)
 
-	rec := send(h, "/log", `{"workspace":"alpha"}`, "v1")
+	// The client is the stale side: a process started before the rebuild,
+	// such as a worker still waiting. Retiring here would end the daemon
+	// that the rebuild's own clients spawned.
+	rec := send(d.h, "/register", `{"workspace":"alpha","name":"worker"}`, "v0")
 	wantStatus(t, rec, http.StatusOK)
-	if *stopped {
+	if d.stopped {
+		t.Error("stop was called; an older client must not retire the current daemon")
+	}
+	if _, err := d.st.Mailbox(t.Context(), "alpha", "worker"); err != nil {
+		t.Errorf("the older client's register did not reach the store: %v", err)
+	}
+}
+
+func TestAMatchingVersionIsServedWithoutACheck(t *testing.T) {
+	d := versioned(t, true)
+
+	rec := send(d.h, "/log", `{"workspace":"alpha"}`, "v1")
+	wantStatus(t, rec, http.StatusOK)
+	if d.stopped {
 		t.Error("stop was called for a matching version")
 	}
+	if d.checks != 0 {
+		t.Errorf("stale was called %d times for a matching version; it re-reads the whole binary", d.checks)
+	}
 }
 
-func TestARequestWithoutAVersionIsServed(t *testing.T) {
-	_, h, stopped := versioned(t)
+func TestARequestWithoutAVersionIsServedWithoutACheck(t *testing.T) {
+	d := versioned(t, true)
 
 	// curl --unix-socket sends no Bro-Version; debugging must not retire
 	// the daemon.
-	rec := send(h, "/log", `{"workspace":"alpha"}`, "")
+	rec := send(d.h, "/log", `{"workspace":"alpha"}`, "")
 	wantStatus(t, rec, http.StatusOK)
-	if *stopped {
+	if d.stopped {
 		t.Error("stop was called for a request with no version header")
+	}
+	if d.checks != 0 {
+		t.Errorf("stale was called %d times for a request with no version header", d.checks)
 	}
 }

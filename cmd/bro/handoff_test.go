@@ -14,11 +14,18 @@ import (
 // The handoff test needs real daemons in separate processes, built from
 // different versions. The test binary plays `bro daemon`: spawned as
 // `<test binary> daemon` with BRO_TEST_DAEMON_VERSION set, TestMain runs
-// the real runDaemon at that version instead of the tests.
+// the real runDaemon at that version instead of the tests. The test
+// binary never hashes to a made-up version, so each of these daemons
+// finds its executable changed, as a rebuilt one would, and retires on a
+// mismatch.
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "daemon" {
 		if v := os.Getenv("BRO_TEST_DAEMON_VERSION"); v != "" {
-			if err := runDaemon(context.Background(), os.Getenv("BRO_SOCK"), os.Getenv("BRO_DB"), v); err != nil {
+			exe, err := os.Executable()
+			if err != nil {
+				os.Exit(1)
+			}
+			if err := runDaemon(context.Background(), os.Getenv("BRO_SOCK"), os.Getenv("BRO_DB"), exe, v); err != nil {
 				os.Exit(1)
 			}
 			os.Exit(0)

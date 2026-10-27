@@ -31,7 +31,7 @@ func newClient(t *testing.T) (*store.Store, *client.Client) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	ts := httptest.NewServer(server.New(st, testVersion, func() {}))
+	ts := httptest.NewServer(server.New(st, testVersion, func() {}, func() bool { return true }))
 	t.Cleanup(ts.Close)
 
 	return st, &client.Client{BaseURL: ts.URL, HTTP: ts.Client(), Version: testVersion}
@@ -291,7 +291,7 @@ func TestNewDialsTheUnixSocket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
-	srv := &http.Server{Handler: server.New(st, testVersion, func() {})}
+	srv := &http.Server{Handler: server.New(st, testVersion, func() {}, func() bool { return true })}
 	go func() { _ = srv.Serve(l) }()
 	t.Cleanup(func() { srv.Close() })
 
