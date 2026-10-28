@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "^bro-worker$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bro",
+            "args": ["hook-start"]
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^bro-worker$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bro",
+            "args": ["pull", "--wait", "600s", "--hook"],
+            "timeout": 660
+          }
+        ]
+      }
+    ]
+  }
+}

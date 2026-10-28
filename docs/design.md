@@ -183,7 +183,9 @@ environment, so starting the orchestrator with `BRO_WORKSPACE` set covers every
 worker. Identity cannot travel that way, because every worker would inherit the
 orchestrator's. The two hook commands ignore it and name the worker's mailbox from the
 hook input, and `hook-start` tells the worker that name for its own `bro --as NAME`
-calls.
+calls. An orchestrating session leaves `BRO_IDENTITY` unset and passes `--as` itself:
+a worker that forgets `--as` then gets an error instead of posting under the
+orchestrator's name.
 
 `bro pull` with no flags returns everything after the cursor and advances it. Every
 response carries `latest_id` and `unread_count`, so a caller learns backlog depth
@@ -328,36 +330,75 @@ blocked on it. A barrier without that has a permanent deadlock in it.
 
 ## Claude Code integration
 
-Hooks are scoped by where they are defined. Subagent frontmatter hooks run only while
-that subagent is running and are removed when it finishes, and a `Stop` hook declared
-there is converted to `SubagentStop`. So the mailbox behavior attaches to the agent
-definition and no other agent is affected.
+Three files in `.claude/` connect `bro` to Claude Code:
 
-```yaml
----
-name: bro-worker
-description: Worker participating in a bro-coordinated unit
-hooks:
-  SubagentStart:
-    - hooks:
-        - type: command
-          command: bro
-          args: ["hook-start"]
-  Stop:
-    - hooks:
-        - type: command
-          command: bro
-          args: ["pull", "--wait", "600s", "--hook"]
----
+| File | Holds |
+| --- | --- |
+| `agents/bro-worker.md` | The worker's system prompt: when to post, what its summary carries, how it receives messages |
+| `settings.json` | The two hooks, matched on the agent type `bro-worker` |
+| `skills/bro-orchestrate/SKILL.md` | The orchestrator's procedure: set up, spawn, answer, close |
+
+```json
+{
+  "hooks": {
+    "SubagentStart": [
+      {
+        "matcher": "^bro-worker$",
+        "hooks": [{ "type": "command", "command": "bro", "args": ["hook-start"] }]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^bro-worker$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bro",
+            "args": ["pull", "--wait", "600s", "--hook"],
+            "timeout": 660
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-`SubagentStart` fires at spawn with `agent_id` and `agent_type` in its input, supports
-`additionalContext`, and cannot block. It is where `bro hook-start` registers the
-worker's mailbox and injects the roster, so identity and the roster stop being things
-the prompt has to hand-wave.
+The matcher is the agent's frontmatter `name`, so no other agent is affected. The hooks
+live in `settings.json` because that is where Claude Code documents `SubagentStart`; it
+does not document whether a `SubagentStart` hook in an agent's own frontmatter fires
+for that agent. `command` plus `args` runs `bro` directly, with no shell, so `bro` must
+be on the `PATH` of the session that spawns the workers.
 
-`Stop` and `SubagentStop` receive `last_assistant_message`, so the hook can publish the
-worker's own summary without the agent remembering to call `bro tell`.
+`SubagentStart` fires at spawn, and again when a subagent is resumed, with `agent_id`
+and `agent_type` in its input. It cannot block. Its `additionalContext` is added to the
+subagent's own conversation, before its first prompt. It is where `bro hook-start`
+registers the worker's mailbox and injects the roster, so identity and the roster stop
+being things the prompt has to hand-wave.
+
+`SubagentStop` receives `last_assistant_message`, so the hook can publish the worker's
+own summary without the agent remembering to call `bro tell`. Command hooks time out
+after 600 seconds by default, exactly the length of the wait, so the stop hook's
+`timeout` is 660: a wait that runs its full length still answers before Claude Code
+cancels it.
+
+A `SubagentStop` block keeps a worker running only when the worker ended its turn with
+plain text. Claude Code 2.1.312 also gives subagents a `SubagentHandback` tool, and
+tells them to finish with it; that call ends the run outright, and a block returned
+afterwards changes nothing. The stop hook still runs and waits, so a handed-back
+worker's mailbox goes on pulling messages nobody reads, and Claude Code reports the
+worker complete only once that hook exits. A handback also leaves
+`last_assistant_message` blank, since the last thing the worker produced is a tool
+call, so no summary reaches the room.
+
+After every turn a subagent ends with plain text, Claude Code also adds a reminder to
+hand back. While the unit is open, the stop hook blocks, and the reminder arrives
+alongside the hook's feedback: new messages, or "No new messages". Once the unit
+closes, the hook lets the stop through and the reminder arrives alone. The worker's
+prompt turns that difference into its rule: ignore a reminder that comes with feedback,
+and hand back the final report when one comes alone. A worker that refuses every
+reminder ends its turns again and again after the close, and each of those turns posts
+another summary.
 
 ### Hook mode semantics
 
@@ -386,9 +427,11 @@ A wait that times out still delivers whatever arrived, as a plain `pull --wait` 
 answered at once, and `--peek` would deliver the same messages on every stop.
 
 The hook ignores `stop_hook_active`, because staying alive across repeated blocks is
-the point. Claude Code ends the session after `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`
-consecutive blocks (8 by default). Leave it alone — with a 600s wait that is about 80
-minutes of total waiting, and it is the deadlock breaker a barrier design needs.
+the point. After eight consecutive blocks with no tool call between them, Claude Code
+overrides the next block and the worker stops; `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`
+changes the count. Leave it alone. A worker that acts on what it receives calls tools,
+which resets the count; one that only waits stops after about 80 minutes, and that is
+the deadlock breaker a barrier design needs.
 
 ### Message framing
 
@@ -501,7 +544,14 @@ Teaches: goroutines, channels, `select`, `context.Context` and cancellation,
 
 ### M5 — integration
 
-Hook mode, `SubagentStart` registration, `bro close`. No new Go.
+Control messages and `bro close`, which end a unit for every mailbox registered before
+it. The handshake fix, so a rebuild retires only a stale daemon. `pull --hook` for a
+worker's stop hook, and `hook-start` for its start hook, with the `Mailboxes` roster
+behind it. Then the `.claude/` files that wire it to Claude Code, checked with a real
+run.
+
+Teaches: typed string constants, `sql.Null[T]`, injected functions, strings as bytes
+and runes, `strings.Builder`, retrying only what is safe to retry.
 
 ## Starter code
 
@@ -672,11 +722,8 @@ exist.
 
 ## Open questions
 
-Three things that only a real run will answer:
+Two things that only a real run will answer:
 
-- **Where `SubagentStart` context lands.** The hooks reference does not say whether
-  `additionalContext` from `SubagentStart` reaches the subagent or its parent.
-  `hook-start` is written for the subagent.
 - **Message discipline.** In a shared room, "acknowledged" and "starting work now" are
   noise multiplied by N readers. Whether workers post anything worth reading is a
   prompt problem, not a `bro` problem, and `bro log --follow` is how to find out.
