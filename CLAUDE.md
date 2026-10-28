@@ -1,7 +1,7 @@
 # bro
 
 A CLI backed by a local daemon that lets concurrently running AI agents message each
-other. Go 1.25 or later. Full design in `docs/design.md`.
+other. Go 1.26.5 or later, as `go.mod` names. Full design in `docs/design.md`.
 
 ## This is a learning project
 

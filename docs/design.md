@@ -66,6 +66,9 @@ For a transcript that reads with contiguous numbering, derive it at query time �
 `ROW_NUMBER() OVER (ORDER BY id)` within the workspace filter — rather than storing
 a second column that has to be kept consistent with the first.
 
+The schema as of 1.0.0. The migration files in `internal/store/migrations/` are the
+authoritative version (see [Storage](#storage)).
+
 ```sql
 CREATE TABLE messages (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,14 +168,12 @@ never moves, so a close written before the mailbox existed does not apply to it.
 ```
 bro [--as NAME] [--workspace WS] <command> [flags] [ARG]
 
-bro register [-n NAME] [-d DESC]     # random name if omitted
-bro list                             # mailboxes in this workspace
+bro register [-n NAME] [-d DESC]     # NAME defaults to the identity, then a random name
 bro tell [--to a,b] [--kind control] MESSAGE
 bro pull [--wait DURATION] [--peek] [--since N] [--last N] [--json]
 bro pull --wait DURATION --hook      # a worker's Stop hook; hook input on stdin
-bro log [--follow]                   # whole-workspace transcript, for humans
+bro log                              # whole-workspace transcript, for humans
 bro close [MESSAGE]                  # MESSAGE defaults to "unit complete"
-bro unregister [-n NAME] [--force]
 bro hook-start                       # a worker's SubagentStart hook; hook input on stdin
 bro daemon                           # usually spawned by the client
 ```
@@ -188,8 +189,8 @@ a worker that forgets `--as` then gets an error instead of posting under the
 orchestrator's name.
 
 `bro pull` with no flags returns everything after the cursor and advances it. Every
-response carries `latest_id` and `unread_count`, so a caller learns backlog depth
-without a second call. `latest_id` is the highest `id` in the reader's workspace: a
+pull response carries `latest_id` and `unread_count`, printed with `--json`, so a
+caller learns backlog depth without a second call. `latest_id` is the highest `id` in the reader's workspace: a
 cursor equal to it means caught up. The global maximum is meaningless to a single
 mailbox and is never reported.
 
@@ -199,7 +200,7 @@ Agents branch on exit codes without parsing. Reserve them:
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Messages returned |
+| 0 | Success |
 | 1 | Error |
 | 3 | The wait timed out; call again. Messages that arrived without waking the reader are still returned |
 | 4 | Unit complete: a close written after this mailbox registered; stop |
@@ -218,17 +219,8 @@ A unix domain socket at `~/.bro/bro.sock`, overridable with `$BRO_SOCK`. It shar
 `~/.bro` with the database, and that directory is created `0700`: no port, no network
 exposure, and filesystem permissions are the access control.
 
-Serve plain HTTP over the listener:
-
-```go
-l, err := net.Listen("unix", sockPath)
-if err != nil {
-    return err
-}
-return http.Serve(l, mux)
-```
-
-That buys routing, methods, status codes, and JSON bodies for free, and the whole
+The daemon serves plain HTTP over the listener: `POST` routes such as `/tell` and
+`/pull`, with JSON bodies. That buys routing, methods, status codes, and JSON for free, and the whole
 thing is debuggable with `curl --unix-socket`.
 
 ### Single instance
@@ -343,9 +335,10 @@ a `database is locked` error:
 
 SQLite alone could do almost all of this; a client polling the file every 200ms would
 be indistinguishable from a daemon at agent timescales. The daemon earns its place on
-**presence**: it holds open connections, so when a worker dies it can tell the
-difference between "worker-3 is thinking" and "worker-3 is gone", and release everyone
-blocked on it. A barrier without that has a permanent deadlock in it.
+**presence**: it holds each waiter's open connection, which is what tells "worker-3 is
+thinking" apart from "worker-3 is gone". A worker that dies mid-wait drops its
+connection, its wait is cancelled before the pull, and its cursor does not move, so a
+dead worker never consumes messages (see [The wait loop](#the-wait-loop)).
 
 ## Claude Code integration
 
@@ -504,10 +497,11 @@ the worker stops.
 
 ## Build order
 
-Requires Go 1.25 or later (for `testing/synctest`).
+Requires Go 1.26.5 or later, the version `go.mod` names.
 
 ```
 bro/
+├── .claude/                 # the worker agent, its hooks, the orchestrator skill
 ├── cmd/bro/main.go          # flag parsing, exit codes
 ├── internal/store/          # SQLite; no knowledge of HTTP
 │   ├── store.go
@@ -572,69 +566,18 @@ run.
 Teaches: typed string constants, `sql.Null[T]`, injected functions, strings as bytes
 and runes, `strings.Builder`, retrying only what is safe to retry.
 
-## Starter code
+## Waking waiters
 
-Two pieces are worth having written out, because they are where the design lives and
-where Go's concurrency model stops being abstract.
+Two pieces carry the concurrency design, and they are where Go's concurrency model
+stops being abstract: the hub in `internal/hub/hub.go`, and the wait loop, `wait` in
+`internal/server/server.go`.
 
 ### The hub
 
-Broadcast wake-ups, with no knowledge of what a message is.
-
-```go
-package hub
-
-import "sync"
-
-// Hub wakes goroutines that are waiting on a workspace.
-type Hub struct {
-	mu      sync.Mutex
-	waiters map[string]map[chan struct{}]struct{}
-}
-
-func New() *Hub {
-	return &Hub{waiters: make(map[string]map[chan struct{}]struct{})}
-}
-
-// Subscribe returns a channel that receives a value whenever something is
-// published to ws, and a function that unregisters it. The caller must call
-// the cancel func, normally with defer.
-func (h *Hub) Subscribe(ws string) (<-chan struct{}, func()) {
-	ch := make(chan struct{}, 1)
-
-	h.mu.Lock()
-	if h.waiters[ws] == nil {
-		h.waiters[ws] = make(map[chan struct{}]struct{})
-	}
-	h.waiters[ws][ch] = struct{}{}
-	h.mu.Unlock()
-
-	return ch, func() {
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		delete(h.waiters[ws], ch)
-		if len(h.waiters[ws]) == 0 {
-			delete(h.waiters, ws)
-		}
-	}
-}
-
-// Publish wakes every current waiter on ws. It never blocks.
-func (h *Hub) Publish(ws string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for ch := range h.waiters[ws] {
-		select {
-		case ch <- struct{}{}:
-		default:
-			// Buffer already holds a pending wake. One is enough: the waiter
-			// re-queries the store when it wakes, so it will see everything.
-		}
-	}
-}
-```
-
-Four Go things in thirty lines, and each is worth stopping on:
+Broadcast wake-ups, with no knowledge of what a message is. `Subscribe(ws)` returns a
+channel with a buffer of one and a function that unregisters it; `Publish(ws)` sends to
+every channel subscribed to `ws` without ever blocking. Four Go idioms carry it, and
+each is worth stopping on:
 
 - `struct{}{}` is a zero-byte value. `map[K]struct{}` is the idiomatic set, and
   `chan struct{}` is a signal that carries no data.
@@ -648,34 +591,14 @@ Four Go things in thirty lines, and each is worth stopping on:
 
 ### The wait loop
 
-Waiting decides only *when* the pull happens. `wait` returns once the store says an
-unread message mentions the reader; the ordinary `Pull`, with its cursor transaction
-and `--peek`, does the reading.
+Waiting decides only *when* the pull happens. `wait` returns once the store says the
+reader has something to wake for: an unread message that mentions it, an unread control
+message, or a close. The ordinary `Pull`, with its cursor transaction and `--peek`, does
+the reading.
 
-```go
-// wait blocks until ws has an unread message that mentions me, or ctx ends.
-func (sv *server) wait(ctx context.Context, ws, me string) error {
-	wake, unsub := sv.hub.Subscribe(ws)
-	defer unsub()
-
-	for {
-		// Subscribed before checking: a write that commits after this check
-		// has already rung wake, so it cannot fall between the check and the
-		// select below.
-		ok, err := sv.st.Wakeable(ctx, ws, me)
-		if err != nil || ok {
-			return err
-		}
-
-		select {
-		case <-wake:
-			// Something changed. Loop and re-check.
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-}
-```
+`wait` subscribes to the workspace first, then loops: ask the store with `Wakeable`,
+return if the answer is yes, and otherwise block in a `select` until the channel rings
+or the context ends.
 
 Subscribing before the check is the crux of the whole program. Checking first and then
 subscribing leaves a window between the two where a write commits, publishes to
@@ -690,7 +613,8 @@ re-check waits in the channel's buffer, and the next `select` returns at once.
 before the commit would wake waiters that cannot yet see the row; they would find
 nothing, block again, and the wake would be spent.
 
-The handler owns three contexts:
+The pull handler works with two contexts, and how the wait ends decides what happens
+next:
 
 - `r.Context()` ends when the client disconnects, and — through `BaseContext` — when
   the daemon stops. The pull runs under it.
@@ -712,8 +636,10 @@ a daemon concept; the store never learns that anyone waited.
 
 Three things make this project pleasant to test, all standard library:
 
-- **`net.Pipe`** returns a connected pair of in-memory `net.Conn` values. The whole
-  client/server protocol can be exercised with no socket and no filesystem.
+- **`net/http/httptest`** serves the real handler in-process, so the client, the server
+  and the store are tested together with no daemon and no socket. Only the tests of
+  the socket itself use a real one: dialing, spawning, the daemon's lifecycle, and the
+  handoff between builds.
 - **`testing/synctest`** fakes the clock inside a bubble, so a test of a 600-second
   timeout runs instantly and deterministically instead of actually sleeping.
 - **`t.TempDir()`** gives each test its own SQLite file, cleaned up automatically.
@@ -735,9 +661,9 @@ hub that code review does not.
   already.
 - **Auto-registration on first `tell`.** See "sending to an unknown mailbox".
 
-`unregister` and `list` are both easy and neither is on the critical path for proving
-the idea works. `register`, `tell`, `pull`, `log`, and `close` are the set that has to
-exist.
+`unregister`, `list`, and `log --follow` are not built. Each is easy, and none is on the
+critical path for proving the idea works. `register`, `tell`, `pull`, `log`, and `close`
+are the set that has to exist.
 
 ## Open questions
 
@@ -745,6 +671,6 @@ Two things that only a real run will answer:
 
 - **Message discipline.** In a shared room, "acknowledged" and "starting work now" are
   noise multiplied by N readers. Whether workers post anything worth reading is a
-  prompt problem, not a `bro` problem, and `bro log --follow` is how to find out.
+  prompt problem, not a `bro` problem, and `bro log` is how to find out.
 - **TTL on abandoned mailboxes.** Subagents that die leave mailboxes behind. Whether
   that needs a sweep depends on how long a typical workspace lives.
