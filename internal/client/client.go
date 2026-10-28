@@ -59,16 +59,16 @@ func (c *Client) do(
 		return err
 	}
 
-	isGoingAway := false
+	warned := false
 	for i := 0; ; i++ {
 		err := c.once(ctx, path, b, resp)
 
-		isBusy := (errors.Is(err, errVersionMismatch) || errors.Is(err, errUnavailable))
-		if isBusy && i < 3 {
-			isGoingAway = true
+		refused := errors.Is(err, errVersionMismatch) || errors.Is(err, errUnavailable)
+		if refused {
+			warned = true
 		}
 
-		retry := isBusy || (isGoingAway && errors.Is(err, errNoReply))
+		retry := refused || (warned && errors.Is(err, errNoReply))
 
 		if !retry || i == 3 {
 			return err
