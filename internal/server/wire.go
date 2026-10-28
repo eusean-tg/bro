@@ -56,3 +56,11 @@ type CloseRequest struct {
 	Sender    string `json:"sender"`
 	Body      string `json:"body"`
 }
+
+type MailboxesRequest struct {
+	Workspace string `json:"workspace"`
+}
+
+type MailboxesResponse struct {
+	Mailboxes []store.Mailbox `json:"mailboxes"`
+}

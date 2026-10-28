@@ -103,7 +103,7 @@ func run(args []string) error {
 	}
 
 	if global.NArg() == 0 {
-		return errors.New("usage: bro [--workspace NAME] [--as NAME] <tell|log|register|pull|daemon>")
+		return errors.New("usage: bro [--workspace NAME] [--as NAME] <tell|log|register|pull|daemon|close|hook-start>")
 	}
 
 	sock, err := sockPath()
@@ -147,6 +147,8 @@ func run(args []string) error {
 		return runPull(ctx, c, cfg, os.Stdin, os.Stdout, rest)
 	case "close":
 		return runClose(ctx, c, cfg, os.Stdout, rest)
+	case "hook-start":
+		return runHookStart(ctx, c, cfg, os.Stdin, os.Stdout)
 	default:
 		return fmt.Errorf("unknown command %q", cmd)
 	}
@@ -420,6 +422,21 @@ type hookDecision struct {
 	Reason   string `json:"reason"`
 }
 
+func getHookInput(in io.Reader) (hookInput, error) {
+	var input hookInput
+	if err := json.NewDecoder(in).Decode(&input); err != nil {
+		return hookInput{}, fmt.Errorf("get hook input decode: %w", err)
+	}
+
+	if input.AgentID == "" || input.AgentType == "" {
+		return hookInput{}, errors.New("agent_id and agent_type must not be empty")
+	}
+
+	input.LastAssistantMessage = strings.TrimSpace(input.LastAssistantMessage)
+
+	return input, nil
+}
+
 func pullForHook(
 	ctx context.Context,
 	c *client.Client,
@@ -428,23 +445,17 @@ func pullForHook(
 	in io.Reader,
 	out io.Writer,
 ) error {
-	var input hookInput
-	if err := json.NewDecoder(in).Decode(&input); err != nil {
-		return fmt.Errorf("pullForHook input: %w", err)
+	input, err := getHookInput(in)
+	if err != nil {
+		return fmt.Errorf("pull for hook get input: %w", err)
 	}
-
-	if input.AgentID == "" || input.AgentType == "" {
-		return errors.New("agent_id and agent_type must not be empty")
-	}
-
-	input.LastAssistantMessage = strings.TrimSpace(input.LastAssistantMessage)
 
 	mb := mailboxName(input.AgentType, input.AgentID)
 
 	if input.LastAssistantMessage != "" {
 		_, err := c.Tell(ctx, ws, mb, input.LastAssistantMessage, nil, store.KindNote)
 		if err != nil {
-			return fmt.Errorf("pullForHook tell: %w", err)
+			return fmt.Errorf("pull for hook tell: %w", err)
 		}
 	}
 
@@ -472,10 +483,83 @@ func pullForHook(
 	}
 
 	if err := json.NewEncoder(out).Encode(d); err != nil {
-		return fmt.Errorf("pullForHook encode: %w", err)
+		return fmt.Errorf("pull for hook encode: %w", err)
 	}
 
 	return nil
+}
+
+type hookSpecificOutput struct {
+	HookEventName     string `json:"hookEventName"`
+	AdditionalContext string `json:"additionalContext"`
+}
+
+type hookOutput struct {
+	HookSpecificOutput hookSpecificOutput `json:"hookSpecificOutput"`
+}
+
+func runHookStart(
+	ctx context.Context,
+	c *client.Client,
+	cfg Config,
+	in io.Reader,
+	out io.Writer,
+) error {
+	input, err := getHookInput(in)
+	if err != nil {
+		return fmt.Errorf("run hook start get input: %w", err)
+	}
+
+	mbn := mailboxName(input.AgentType, input.AgentID)
+
+	_, err = c.Register(ctx, cfg.Workspace, mbn, "")
+	if err != nil && !errors.Is(err, store.ErrMailboxExists) {
+		return fmt.Errorf("register mailbox: %w", err)
+	}
+
+	mbs, err := c.Mailboxes(ctx, cfg.Workspace)
+	if err != nil {
+		return fmt.Errorf("fetch roster: %w", err)
+	}
+
+	o := hookOutput{
+		HookSpecificOutput: hookSpecificOutput{
+			HookEventName:     "SubagentStart",
+			AdditionalContext: hookContext(cfg.Workspace, mbn, mbs),
+		},
+	}
+
+	if err := json.NewEncoder(out).Encode(o); err != nil {
+		return fmt.Errorf("run hook start encode: %w", err)
+	}
+
+	return nil
+}
+
+func hookContext(ws, me string, roster []store.Mailbox) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are %q in bro workspace %q\n", me, ws)
+	fmt.Fprintf(&b, "Post with: bro --as %s tell [--to NAME,NAME] MESSAGE\n", me)
+	fmt.Fprintf(&b, "--to wakes the mailboxes you name; everyone can read every message.\n")
+	fmt.Fprintf(&b, "Messages for you arrive when you end your turn.\n")
+	fmt.Fprintf(&b, "Other mailboxes:\n")
+
+	for _, mb := range roster {
+		if mb.Name == me {
+			continue
+		}
+
+		fmt.Fprintf(&b, "- %s", mb.Name)
+
+		desc := strings.TrimSpace(mb.Description)
+		if desc != "" {
+			fmt.Fprintf(&b, ": %s", desc)
+		}
+
+		fmt.Fprintf(&b, "\n")
+	}
+
+	return b.String()
 }
 
 func hash(src io.Reader) (string, error) {

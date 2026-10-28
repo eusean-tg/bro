@@ -169,16 +169,21 @@ bro register [-n NAME] [-d DESC]     # random name if omitted
 bro list                             # mailboxes in this workspace
 bro tell [--to a,b] [--kind control] MESSAGE
 bro pull [--wait DURATION] [--peek] [--since N] [--last N] [--json]
+bro pull --wait DURATION --hook      # a worker's Stop hook; hook input on stdin
 bro log [--follow]                   # whole-workspace transcript, for humans
 bro close [MESSAGE]                  # MESSAGE defaults to "unit complete"
 bro unregister [-n NAME] [--force]
+bro hook-start                       # a worker's SubagentStart hook; hook input on stdin
 bro daemon                           # usually spawned by the client
 ```
 
 Identity comes from `$BRO_IDENTITY`, with `--as` as an override; the workspace comes
-from `$BRO_WORKSPACE`, with `--workspace`. A flag required on every invocation is a
-flag an agent eventually forgets, so `SubagentStart` sets both at spawn and no agent
-types either.
+from `$BRO_WORKSPACE`, with `--workspace`. A subagent inherits its parent's
+environment, so starting the orchestrator with `BRO_WORKSPACE` set covers every
+worker. Identity cannot travel that way, because every worker would inherit the
+orchestrator's. The two hook commands ignore it and name the worker's mailbox from the
+hook input, and `hook-start` tells the worker that name for its own `bro --as NAME`
+calls.
 
 `bro pull` with no flags returns everything after the cursor and advances it. Every
 response carries `latest_id` and `unread_count`, so a caller learns backlog depth
@@ -194,9 +199,11 @@ Agents branch on exit codes without parsing. Reserve them:
 | --- | --- |
 | 0 | Messages returned |
 | 1 | Error |
-| 2 | Hook mode: block the stop |
 | 3 | The wait timed out; call again. Messages that arrived without waking the reader are still returned |
 | 4 | Unit complete: a close written after this mailbox registered; stop |
+
+The hook commands are the exception: they exit 0 on every outcome but an error, and
+answer Claude Code on stdout instead.
 
 ### Sending to an unknown mailbox is an error
 
@@ -341,9 +348,9 @@ hooks:
 ```
 
 `SubagentStart` fires at spawn with `agent_id` and `agent_type` in its input, supports
-`additionalContext`, and cannot block. It is where `bro register` runs and where the
-mailbox roster gets injected, so identity and the roster stop being things the prompt
-has to hand-wave.
+`additionalContext`, and cannot block. It is where `bro hook-start` registers the
+worker's mailbox and injects the roster, so identity and the roster stop being things
+the prompt has to hand-wave.
 
 `Stop` and `SubagentStop` receive `last_assistant_message`, so the hook can publish the
 worker's own summary without the agent remembering to call `bro tell`.
@@ -399,6 +406,35 @@ Claude Code caps hook output at 10,000 characters, `additionalContext` included.
 reason is cut to 9,000 characters on a character boundary and ends with a line
 pointing at `bro log` for the rest. The cut messages were pulled, so the cursor has
 already passed them.
+
+### `hook-start` semantics
+
+`bro hook-start` runs when a worker is spawned. It reads the hook's JSON input from
+stdin, names the worker's mailbox with the same `mailboxName(agent_type, agent_id)` the
+`Stop` hook pulls as, and registers it in the workspace. A mailbox that already exists
+counts as registered, so a repeated start is harmless. Input missing either field is
+an error, and nothing is registered.
+
+It answers on stdout and exits 0:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"…"}}
+```
+
+The context is the only way the worker learns its name, so it carries:
+
+- the worker's mailbox name and the workspace
+- the command to post with: `bro --as NAME tell [--to a,b] MESSAGE`
+- every other mailbox in the workspace, by name, each with its description
+
+The roster is read once, at spawn. Workers spawned in parallel run `hook-start` at
+about the same moment, so a worker's roster lists the orchestrator and whoever
+registered before it, not necessarily every sibling. The rest appear as their posts
+arrive.
+
+`SubagentStart` cannot block. When `hook-start` fails, the worker starts without a
+mailbox and the error is shown; its `Stop` hook then fails on the unknown mailbox, and
+the worker stops.
 
 ## Build order
 
@@ -632,8 +668,11 @@ exist.
 
 ## Open questions
 
-Two things that only a real run will answer:
+Three things that only a real run will answer:
 
+- **Where `SubagentStart` context lands.** The hooks reference does not say whether
+  `additionalContext` from `SubagentStart` reaches the subagent or its parent.
+  `hook-start` is written for the subagent.
 - **Message discipline.** In a shared room, "acknowledged" and "starting work now" are
   noise multiplied by N readers. Whether workers post anything worth reading is a
   prompt problem, not a `bro` problem, and `bro log --follow` is how to find out.

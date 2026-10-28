@@ -254,6 +254,29 @@ func (s *Store) Mailbox(
 	return fetchMailbox(ctx, s.db, ws, name)
 }
 
+func (s *Store) Mailboxes(ctx context.Context, ws string) ([]Mailbox, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT name, description, cursor, joined_id, created_at FROM mailboxes WHERE workspace = ? ORDER BY name`,
+		ws,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query mailboxes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []Mailbox{}
+	for rows.Next() {
+		var mb Mailbox
+		if err := rows.Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.JoinedID, &mb.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan mailbox: %w", err)
+		}
+		out = append(out, mb)
+	}
+
+	return out, rows.Err()
+}
+
 func fetchMailboxes(
 	ctx context.Context,
 	q querier,
@@ -261,7 +284,7 @@ func fetchMailboxes(
 	names []string,
 ) ([]Mailbox, error) {
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(names)), ",")
-	query := `SELECT name, description, cursor, created_at FROM mailboxes WHERE workspace = ? AND name IN (` + placeholders + `)`
+	query := `SELECT name, description, cursor, joined_id, created_at FROM mailboxes WHERE workspace = ? AND name IN (` + placeholders + `)`
 
 	args := make([]any, 0, len(names)+1)
 	args = append(args, ws)
@@ -282,7 +305,7 @@ func fetchMailboxes(
 	var out []Mailbox
 	for rows.Next() {
 		var mb Mailbox
-		if err := rows.Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.CreatedAt); err != nil {
+		if err := rows.Scan(&mb.Name, &mb.Description, &mb.Cursor, &mb.JoinedID, &mb.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan mailbox: %w", err)
 		}
 		out = append(out, mb)

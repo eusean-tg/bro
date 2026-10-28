@@ -209,3 +209,19 @@ func (c *Client) CloseWorkspace(
 
 	return res.ID, nil
 }
+
+func (c *Client) Mailboxes(
+	ctx context.Context,
+	ws string,
+) ([]store.Mailbox, error) {
+	var res server.MailboxesResponse
+	req := server.MailboxesRequest{
+		Workspace: ws,
+	}
+
+	if err := c.do(ctx, "/mailboxes", req, &res); err != nil {
+		return nil, err
+	}
+
+	return res.Mailboxes, nil
+}

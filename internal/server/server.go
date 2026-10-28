@@ -29,6 +29,7 @@ func New(st *store.Store, version string, stop func(), stale func() bool) http.H
 	mux.HandleFunc("POST /register", sv.register)
 	mux.HandleFunc("POST /pull", sv.pull)
 	mux.HandleFunc("POST /close", sv.close)
+	mux.HandleFunc("POST /mailboxes", sv.mailboxes)
 
 	return withVersion(version, stop, stale, mux)
 }
@@ -179,6 +180,26 @@ func (sv *server) wait(ctx context.Context, ws, me string) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func (sv *server) mailboxes(w http.ResponseWriter, r *http.Request) {
+	var body MailboxesRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	mbs, err := sv.st.Mailboxes(r.Context(), body.Workspace)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	resp := MailboxesResponse{
+		Mailboxes: mbs,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

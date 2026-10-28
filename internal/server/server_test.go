@@ -257,7 +257,7 @@ func TestPullForAnUnknownMailboxIs404(t *testing.T) {
 func TestMalformedJSONIs400(t *testing.T) {
 	_, h := newServer(t)
 
-	for _, path := range []string{"/tell", "/log", "/register", "/pull", "/close"} {
+	for _, path := range []string{"/tell", "/log", "/register", "/pull", "/close", "/mailboxes"} {
 		t.Run(path, func(t *testing.T) {
 			wantError(t, post(t, h, path, `{"workspace":`), http.StatusBadRequest)
 		})
