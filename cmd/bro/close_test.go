@@ -76,7 +76,7 @@ func TestRunPullOnAClosedUnitIsErrClosedAndStillPrints(t *testing.T) {
 	s, cfg := closedRoom(t)
 
 	var out bytes.Buffer
-	err := runPull(t.Context(), clientFor(t, s), cfg, &out, nil)
+	err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, nil)
 	if !errors.Is(err, errClosed) {
 		t.Fatalf("err = %v, want errClosed", err)
 	}
@@ -89,7 +89,7 @@ func TestRunPullJSONCarriesClosed(t *testing.T) {
 	s, cfg := closedRoom(t)
 
 	var out bytes.Buffer
-	err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--json"})
+	err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, []string{"--json"})
 	if !errors.Is(err, errClosed) {
 		t.Fatalf("err = %v, want errClosed", err)
 	}
@@ -107,11 +107,11 @@ func TestRunPullWaitOnAClosedUnitReturnsAtOnceAsClosed(t *testing.T) {
 	c := clientFor(t, s)
 
 	var first bytes.Buffer
-	_ = runPull(t.Context(), c, cfg, &first, nil) // reads the close
+	_ = runPull(t.Context(), c, cfg, nil, &first, nil) // reads the close
 
 	var out bytes.Buffer
 	start := time.Now()
-	err := runPull(t.Context(), c, cfg, &out, []string{"--wait", "1m"})
+	err := runPull(t.Context(), c, cfg, nil, &out, []string{"--wait", "1m"})
 	if !errors.Is(err, errClosed) {
 		t.Errorf("err = %v, want errClosed: closed wins over waiting and over timing out", err)
 	}

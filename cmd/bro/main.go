@@ -144,7 +144,7 @@ func run(args []string) error {
 	case "register":
 		return runRegister(ctx, c, cfg, os.Stdout, rest)
 	case "pull":
-		return runPull(ctx, c, cfg, os.Stdout, rest)
+		return runPull(ctx, c, cfg, os.Stdin, os.Stdout, rest)
 	case "close":
 		return runClose(ctx, c, cfg, os.Stdout, rest)
 	default:
@@ -312,10 +312,17 @@ func runRegister(
 	return nil
 }
 
+type hookInput struct {
+	AgentID              string `json:"agent_id"`
+	AgentType            string `json:"agent_type"`
+	LastAssistantMessage string `json:"last_assistant_message"`
+}
+
 func runPull(
 	ctx context.Context,
 	c *client.Client,
 	cfg Config,
+	in io.Reader,
 	out io.Writer,
 	rest []string,
 ) error {
@@ -325,6 +332,7 @@ func runPull(
 	pk := pull.Bool("peek", false, "do not advance the cursor")
 	js := pull.Bool("json", false, "enables json output")
 	wt := pull.Duration("wait", 0, "wait for a mention")
+	hk := pull.Bool("hook", false, "stop hook")
 
 	if err := pull.Parse(rest); err != nil {
 		return err
@@ -355,6 +363,22 @@ func runPull(
 	var wait time.Duration
 	if set["wait"] {
 		wait = *wt
+	}
+
+	if set["hook"] && *hk {
+		if wait <= 0 || !set["wait"] {
+			return errors.New("wait is required for hook mode")
+		}
+
+		if set["peek"] {
+			return errors.New("hook mode cannot be peeked")
+		}
+
+		if set["json"] {
+			return errors.New("hook mode is already in json")
+		}
+
+		return pullForHook(ctx, c, cfg.Workspace, wait, in, out)
 	}
 
 	if cfg.Identity == "" {
@@ -391,6 +415,78 @@ func runPull(
 	return nil
 }
 
+type hookDecision struct {
+	Decision string `json:"decision"`
+	Reason   string `json:"reason"`
+}
+
+func pullForHook(
+	ctx context.Context,
+	c *client.Client,
+	ws string,
+	wait time.Duration,
+	in io.Reader,
+	out io.Writer,
+) error {
+	var input hookInput
+	if err := json.NewDecoder(in).Decode(&input); err != nil {
+		return fmt.Errorf("pullForHook input: %w", err)
+	}
+
+	if input.AgentID == "" || input.AgentType == "" {
+		return errors.New("agent_id and agent_type must not be empty")
+	}
+
+	input.LastAssistantMessage = strings.TrimSpace(input.LastAssistantMessage)
+
+	mb := mailboxName(input.AgentType, input.AgentID)
+
+	if input.LastAssistantMessage != "" {
+		_, err := c.Tell(ctx, ws, mb, input.LastAssistantMessage, nil, store.KindNote)
+		if err != nil {
+			return fmt.Errorf("pullForHook tell: %w", err)
+		}
+	}
+
+	res, err := c.Pull(
+		ctx,
+		ws,
+		mb,
+		store.PullOptions{},
+		wait,
+	)
+	if err != nil {
+		return fmt.Errorf("pull messages: %w", err)
+	}
+
+	if res.Closed {
+		return nil
+	}
+
+	var d hookDecision = hookDecision{Decision: "block", Reason: ""}
+
+	if len(res.Messages) > 0 {
+		d.Reason = hookReason(res.Messages, 9000)
+	} else {
+		d.Reason = "No new messages. Stop again to keep waiting."
+	}
+
+	if err := json.NewEncoder(out).Encode(d); err != nil {
+		return fmt.Errorf("pullForHook encode: %w", err)
+	}
+
+	return nil
+}
+
+func hash(src io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, src); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 func buildVersion(exe string) (string, error) {
 	f, err := os.Open(exe)
 	if err != nil {
@@ -398,12 +494,12 @@ func buildVersion(exe string) (string, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	h, err := hash(f)
+	if err != nil {
 		return "", err
 	}
 
-	return hex.EncodeToString(h.Sum(nil))[:12], nil
+	return h[:12], nil
 }
 
 func exeChanged(exe, version string) bool {
@@ -413,4 +509,49 @@ func exeChanged(exe, version string) bool {
 	}
 
 	return v != version
+}
+
+func mailboxName(agentType, agentID string) string {
+	sum := sha256.Sum256([]byte(agentID))
+	hexStr := fmt.Sprintf("%x", sum)
+	return agentType + "-" + hexStr[:8]
+}
+
+func shorten(body string, n int) string {
+	r := []rune(body) // like [...name] in JS
+	if len(r) <= n {
+		return body
+	}
+	return string(r[:n]) // back to a string
+}
+
+func hookReason(msgs []store.Message, budget int) string {
+	const hookCut = "\n[cut to fit; run `bro log` for the rest]"
+	hookCutN := utf8.RuneCountInString(hookCut)
+
+	lines := make([]string, 0)
+
+	for _, m := range msgs {
+		verb := "reported"
+		if m.Kind == string(store.KindControl) {
+			verb = "announced"
+		} else if m.Mentioned {
+			verb = "reported to you"
+		}
+
+		lines = append(lines, fmt.Sprintf("%s %s: %s", m.Sender, verb, m.Body))
+	}
+
+	out := strings.Join(lines, "\n")
+
+	n := utf8.RuneCountInString(out)
+
+	if n <= budget {
+		return out
+	}
+
+	trunc := shorten(out, budget-hookCutN)
+	trunc += hookCut
+
+	return trunc
 }

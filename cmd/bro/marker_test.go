@@ -44,7 +44,7 @@ func TestRunPullMarksTheLinesThatNameTheReader(t *testing.T) {
 
 	var out bytes.Buffer
 	cfg := Config{Identity: "reader", Workspace: "alpha"}
-	if err := runPull(ctx, clientFor(t, s), cfg, &out, nil); err != nil {
+	if err := runPull(ctx, clientFor(t, s), cfg, nil, &out, nil); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 	got := out.String()

@@ -34,7 +34,7 @@ func TestRunPullWaitReturnsForAMention(t *testing.T) {
 
 	var out bytes.Buffer
 	start := time.Now()
-	if err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--wait", "1m"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, []string{"--wait", "1m"}); err != nil {
 		t.Fatalf("runPull --wait: %v", err)
 	}
 	if d := time.Since(start); d > 5*time.Second {
@@ -52,7 +52,7 @@ func TestRunPullWaitTimeoutIsErrTimedOutAndStillPrints(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--wait", "50ms"})
+	err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, []string{"--wait", "50ms"})
 	if !errors.Is(err, errTimedOut) {
 		t.Fatalf("err = %v, want errTimedOut", err)
 	}
@@ -65,7 +65,7 @@ func TestRunPullWaitJSONCarriesTimedOut(t *testing.T) {
 	s, cfg := waitRoom(t)
 
 	var out bytes.Buffer
-	err := runPull(t.Context(), clientFor(t, s), cfg, &out, []string{"--json", "--wait", "50ms"})
+	err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, []string{"--json", "--wait", "50ms"})
 	if !errors.Is(err, errTimedOut) {
 		t.Fatalf("err = %v, want errTimedOut: --json changes the output, not the exit code", err)
 	}
@@ -97,7 +97,7 @@ func TestRunPullWaitRejectsSinceAndLast(t *testing.T) {
 	} {
 		var out bytes.Buffer
 		start := time.Now()
-		err := runPull(t.Context(), clientFor(t, s), cfg, &out, args)
+		err := runPull(t.Context(), clientFor(t, s), cfg, nil, &out, args)
 		if err == nil {
 			t.Errorf("runPull %v succeeded, want an error: the wake check is measured from the cursor", args)
 		}
@@ -114,10 +114,10 @@ func TestRunPullWaitWorksWithPeek(t *testing.T) {
 	}
 
 	var peeked, plain bytes.Buffer
-	if err := runPull(t.Context(), clientFor(t, s), cfg, &peeked, []string{"--wait", "1m", "--peek"}); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, nil, &peeked, []string{"--wait", "1m", "--peek"}); err != nil {
 		t.Fatalf("runPull --wait --peek: %v", err)
 	}
-	if err := runPull(t.Context(), clientFor(t, s), cfg, &plain, nil); err != nil {
+	if err := runPull(t.Context(), clientFor(t, s), cfg, nil, &plain, nil); err != nil {
 		t.Fatalf("runPull: %v", err)
 	}
 	if !strings.Contains(plain.String(), "for you") {

@@ -350,32 +350,55 @@ worker's own summary without the agent remembering to call `bro tell`.
 
 ### Hook mode semantics
 
-Exit 2 is load-bearing. `additionalContext` alone adds context to a turn that still
-ends; only exit 2 keeps the worker alive.
+`bro pull --wait 600s --hook` runs each time a worker tries to end its turn. It reads
+the hook's JSON input from stdin and pulls as the worker's own mailbox,
+`mailboxName(agent_type, agent_id)`: the agent type, a hyphen, and the first 8 hex
+characters of the SHA-256 of the agent id. Input missing either field is an error. The
+hook ignores `--as` and `$BRO_IDENTITY`: a subagent inherits its parent's environment,
+so every worker's hook would otherwise pull as the orchestrator.
 
-| Situation | Exit | Effect |
+Before waiting, the hook posts `last_assistant_message`, when it is not blank, as a
+note from the worker. The worker's summary reaches the room without the agent calling
+`bro tell`, and because it names nobody, it wakes nobody.
+
+The hook answers on stdout and exits 0:
+
+| Situation | Stdout | Effect |
 | --- | --- | --- |
-| Messages waiting | 2 | Stop blocked, messages delivered as the reason |
-| Timed out, unit still open | 2 | Stop blocked, worker keeps waiting |
-| Unit complete | 0 | Worker stops |
+| Messages returned | `{"decision":"block","reason":"<messages>"}` | Stop blocked; the worker continues with the messages |
+| Timed out, nothing new | `{"decision":"block","reason":"No new messages. Stop again to keep waiting."}` | Stop blocked; the worker stops again and the hook waits again |
+| Closed | nothing | The worker stops |
+| Error | `bro: …` on stderr, exit 1 | The worker stops and the error is shown |
 
-Claude Code ends the session after `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` consecutive
-blocks (8 by default). Leave it alone — with a 600s wait that is about 80 minutes of
-total waiting, and it is the deadlock breaker a barrier design needs.
+A wait that times out still delivers whatever arrived, as a plain `pull --wait` does.
+`--hook` requires `--wait` and takes no other pull flag: without a wait every stop is
+answered at once, and `--peek` would deliver the same messages on every stop.
+
+The hook ignores `stop_hook_active`, because staying alive across repeated blocks is
+the point. Claude Code ends the session after `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`
+consecutive blocks (8 by default). Leave it alone — with a 600s wait that is about 80
+minutes of total waiting, and it is the deadlock breaker a barrier design needs.
 
 ### Message framing
 
 Text framed as out-of-band system instructions trips Claude's prompt-injection
 defenses, which surfaces the text to the user instead of treating it as context.
-Messages from other agents are exactly that shape. Wrap them as reported facts:
+Messages from other agents are exactly that shape. The hook's reason states them as
+reported facts, one per line, oldest first:
 
 ```
-worker-3 reported: refactored auth middleware, touched handlers/*.go
+writer reported: refactored auth middleware, touched handlers/*.go
+writer reported to you: take the lexer next
+lead announced: main is broken, stop
 ```
 
-Not as raw imperative text.
+`reported to you` marks a message that mentions the reader; `announced` marks a
+control message.
 
-`additionalContext` is capped at 10,000 characters.
+Claude Code caps hook output at 10,000 characters, `additionalContext` included. The
+reason is cut to 9,000 characters on a character boundary and ends with a line
+pointing at `bro log` for the rest. The cut messages were pulled, so the cursor has
+already passed them.
 
 ## Build order
 
