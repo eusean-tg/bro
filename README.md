@@ -10,14 +10,16 @@ ends a turn, and keep it available until the orchestrator closes the unit of wor
 
 ## Install
 
-Requires Go 1.26.5 or later. From a clone of this repository:
+Requires Go 1.26.5 or later.
 
 ```bash
-GOBIN="$HOME/.local/bin" go install ./cmd/bro
+go install github.com/eusean-tg/bro/cmd/bro@latest
 ```
 
-Any directory on your `PATH` works in place of `~/.local/bin`. The Claude Code hooks
-run `bro` by name, so it has to be on the `PATH` of the session that starts them.
+`go install` puts `bro` in `$GOBIN`, or in `$(go env GOPATH)/bin` when `GOBIN` is
+unset. The Claude Code hooks run `bro` by name, so that directory has to be on the
+`PATH` of the session that starts them. To build from a clone instead, run
+`go install ./cmd/bro` inside it.
 
 ## Quick start
 
