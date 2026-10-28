@@ -312,6 +312,25 @@ SQLite in WAL mode via `modernc.org/sqlite` — pure Go, no cgo, cross-compilati
 trivial. The file lives at `~/.bro/data.db`, overridable with `$BRO_DB`. Only the daemon
 opens it.
 
+The file outlives any one build, so the schema changes through migrations: numbered SQL
+files in `internal/store/migrations/`, embedded in the binary with `//go:embed` and run
+in file-name order. Migration 1 is `0001_init.sql`, the 1.0.0 schema. A schema change is
+the next numbered file. A migration that has shipped is never edited or renumbered,
+because a file that already ran it never runs it again. A test checks that the files
+are numbered from `0001` with no gaps or duplicates.
+
+The file records how many migrations it has run in `PRAGMA user_version`, a number
+SQLite keeps in the file's header. `Open` runs the migrations after that number, in
+order, each in its own transaction together with the bump to `user_version`, so a
+migration that fails leaves the file as the one before it left it. A file whose version
+is higher than this build's list is from a newer build; `Open` refuses it with
+`ErrSchemaTooNew` and changes nothing.
+
+Builds before 1.0.0 recorded no version, so their files read as version 0 and migration
+1 runs on them. Migration 1 keeps `CREATE ... IF NOT EXISTS`, which leaves a file
+already in the 1.0.0 shape untouched; every later migration is plain DDL that runs
+exactly once.
+
 The daemon serves requests concurrently, so a `tell`, a `pull` and a waiter's wake check
 can overlap on the same file. Three connection settings make overlap a wait rather than
 a `database is locked` error:
@@ -492,7 +511,7 @@ bro/
 ├── cmd/bro/main.go          # flag parsing, exit codes
 ├── internal/store/          # SQLite; no knowledge of HTTP
 │   ├── store.go
-│   ├── schema.sql
+│   ├── migrations/          # 0001_init.sql, then one numbered file per change
 │   └── store_test.go
 ├── internal/hub/            # wake-up broadcast; no knowledge of SQLite
 ├── internal/server/         # HTTP handlers over the socket

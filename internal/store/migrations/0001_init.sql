@@ -1,3 +1,6 @@
+-- Migration 1: the 1.0.0 schema. Never edit it: change the schema by adding
+-- the next numbered file. IF NOT EXISTS lets it adopt a file from before
+-- migrations, which already has these tables but no recorded version.
 CREATE TABLE IF NOT EXISTS messages (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace  TEXT    NOT NULL,

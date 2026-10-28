@@ -57,8 +57,8 @@ wins. Do not assume the override preemptively.
 
 - **Tests.** The preferred way to hand over a spec: write the failing test, let the
   owner make it pass. This is the default response to "help me with X".
-- Scaffolding that is not the lesson: `schema.sql`, `go.mod`, `Makefile`, CI config,
-  release scripts.
+- Scaffolding that is not the lesson: migration SQL files, `go.mod`, `Makefile`, CI
+  config, release scripts.
 - Prose: stdlib behavior, why a type has the shape it has, two approaches compared.
 
 ## Bridge from JS/TS
@@ -132,6 +132,9 @@ Run `go test ./... -race` and `go vet ./...` before reviewing. Report what fails
 - Signals are hints, never truth. A waiter that receives a wake-up re-queries the
   store. A dropped wake-up must never mean a lost message.
 - No third-party dependencies beyond `modernc.org/sqlite` without discussion.
+- A schema change is the next numbered file in `internal/store/migrations/`. Never
+  edit or renumber a migration that has shipped; databases that already ran it never
+  run it again.
 
 ## Commands
 

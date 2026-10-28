@@ -3,17 +3,19 @@ package store
 import (
 	"context"
 	"database/sql"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
-var schemaSQL string
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
+var migrations = mustLoadMigrations()
 
 type Kind string
 
@@ -56,6 +58,7 @@ type PullResult struct {
 var (
 	ErrMailboxExists = errors.New("mailbox already exists")
 	ErrNoMailbox     = errors.New("mailbox doesn't exist")
+	ErrSchemaTooNew  = errors.New("schema too new")
 )
 
 type Mailbox struct {
@@ -72,9 +75,9 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	if _, err := db.ExecContext(context.Background(), schemaSQL); err != nil {
+	if err := migrate(context.Background(), db); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("apply schema: %w", err)
+		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
 	return &Store{db: db, Now: time.Now}, nil
@@ -584,4 +587,69 @@ func isClosed(ctx context.Context, q querier, ws, me string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func mustLoadMigrations() []string {
+	out := make([]string, 0)
+
+	entries, err := fs.ReadDir(migrationFiles, "migrations")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	for _, e := range entries {
+		b, err := migrationFiles.ReadFile("migrations/" + e.Name())
+		if err != nil {
+			panic(err.Error())
+		}
+
+		out = append(out, string(b))
+	}
+
+	return out
+}
+
+func applyMigration(ctx context.Context, db *sql.DB, n int, script string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("tx: %w", err)
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err = tx.ExecContext(ctx, script); err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+
+	if _, err = tx.ExecContext(
+		ctx,
+		fmt.Sprintf("PRAGMA user_version = %d", n),
+	); err != nil {
+		return fmt.Errorf("bump user_version: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	return nil
+}
+
+func migrate(ctx context.Context, db *sql.DB) error {
+	var v int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v); err != nil {
+		return fmt.Errorf("read version: %w", err)
+	}
+
+	if v > len(migrations) {
+		return fmt.Errorf("%w: db=%d, available=%d", ErrSchemaTooNew, v, len(migrations))
+	}
+
+	for i := v; i < len(migrations); i++ {
+		if err := applyMigration(ctx, db, i+1, migrations[i]); err != nil {
+			return fmt.Errorf("migration %d failed: %w", i+1, err)
+		}
+	}
+
+	return nil
 }
