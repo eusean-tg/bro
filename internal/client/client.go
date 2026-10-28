@@ -17,6 +17,7 @@ import (
 var (
 	errVersionMismatch = errors.New("version mismatch")
 	errUnavailable     = errors.New("unavailable")
+	errNoReply         = errors.New("no reply")
 )
 
 type remoteError struct {
@@ -58,13 +59,26 @@ func (c *Client) do(
 		return err
 	}
 
+	isGoingAway := false
 	for i := 0; ; i++ {
 		err := c.once(ctx, path, b, resp)
 
-		if (errors.Is(err, errVersionMismatch) || errors.Is(err, errUnavailable)) && i < 3 {
-			continue
+		isBusy := (errors.Is(err, errVersionMismatch) || errors.Is(err, errUnavailable))
+		if isBusy && i < 3 {
+			isGoingAway = true
 		}
-		return err
+
+		retry := isBusy || (isGoingAway && errors.Is(err, errNoReply))
+
+		if !retry || i == 3 {
+			return err
+		}
+
+		select {
+		case <-time.After(50 * time.Millisecond):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 }
 
@@ -91,7 +105,7 @@ func (c *Client) once(
 
 	res, err := c.HTTP.Do(r)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", errNoReply, err)
 	}
 	defer func() { _ = res.Body.Close() }()
 

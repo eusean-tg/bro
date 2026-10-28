@@ -282,9 +282,13 @@ The client never kills a process, so there is no PID file to go stale. This remo
 entire category of "why isn't my rebuild taking effect" that is hard to recognize from
 the inside.
 
-The client retries a request only on `412` and `503`, the two responses that guarantee
-the daemon changed nothing. Any other failure may have committed — a `tell` that fails
-after its insert has posted — so retrying it could post twice.
+The client retries a request on `412` and `503`, the two responses that guarantee the
+daemon changed nothing, pausing briefly before each attempt. Once a daemon has answered
+either, a request that then gets no reply at all is retried too: a daemon going away
+closes its listener, and a connection still queued on it is dropped unread. Any other
+failure may have committed — a `tell` that fails after its insert has posted, or a
+daemon that dies after storing one but before replying — so retrying it could post
+twice.
 
 ### Shutdown
 
