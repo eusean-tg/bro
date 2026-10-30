@@ -172,7 +172,7 @@ bro register [-n NAME] [-d DESC]     # NAME defaults to the identity, then a ran
 bro tell [--to a,b] [--kind control] MESSAGE
 bro pull [--wait DURATION] [--peek] [--since N] [--last N] [--json]
 bro pull --wait DURATION --hook      # a worker's Stop hook; hook input on stdin
-bro log                              # whole-workspace transcript, for humans
+bro log [--since N] [--last N] [--follow]
 bro close [MESSAGE]                  # MESSAGE defaults to "unit complete"
 bro hook-start                       # a worker's SubagentStart hook; hook input on stdin
 bro daemon                           # usually spawned by the client
@@ -193,6 +193,11 @@ pull response carries `latest_id` and `unread_count`, printed with `--json`, so 
 caller learns backlog depth without a second call. `latest_id` is the highest `id` in the reader's workspace: a
 cursor equal to it means caught up. The global maximum is meaningless to a single
 mailbox and is never reported.
+
+`bro log` is the workspace transcript, for humans. It reads as nobody, so it moves no
+cursor and marks no mentions. `--since N` and `--last N` narrow it as they narrow a
+pull, and `--follow` keeps printing new messages until interrupted; "Following the log"
+below covers how it waits.
 
 ### Exit codes
 
@@ -591,14 +596,15 @@ each is worth stopping on:
 
 ### The wait loop
 
-Waiting decides only *when* the pull happens. `wait` returns once the store says the
-reader has something to wake for: an unread message that mentions it, an unread control
-message, or a close. The ordinary `Pull`, with its cursor transaction and `--peek`, does
-the reading.
+Waiting decides only *when* the read happens. `wait` takes its check from the handler
+and returns once the check says yes. A pull's check is `Wakeable`: an unread message
+that mentions the reader, an unread control message, or a close. A log's check is any
+message after the id the client sent. The ordinary `Pull`, with its cursor transaction
+and `--peek`, or the ordinary `Log`, does the reading.
 
-`wait` subscribes to the workspace first, then loops: ask the store with `Wakeable`,
-return if the answer is yes, and otherwise block in a `select` until the channel rings
-or the context ends.
+`wait` subscribes to the workspace first, then loops: run the check, return if the
+answer is yes, and otherwise block in a `select` until the channel rings or the context
+ends.
 
 Subscribing before the check is the crux of the whole program. Checking first and then
 subscribing leaves a window between the two where a write commits, publishes to
@@ -613,17 +619,16 @@ re-check waits in the channel's buffer, and the next `select` returns at once.
 before the commit would wake waiters that cannot yet see the row; they would find
 nothing, block again, and the wake would be spent.
 
-The pull handler works with two contexts, and how the wait ends decides what happens
-next:
+Both handlers work with two contexts, and how the wait ends decides what happens next:
 
 - `r.Context()` ends when the client disconnects, and — through `BaseContext` — when
-  the daemon stops. The pull runs under it.
+  the daemon stops. The read runs under it.
 - `context.WithTimeout(r.Context(), d)` bounds the wait and nothing else. After a
-  timeout it has expired, so the pull must not use it.
-- A wait that ends in `context.DeadlineExceeded` timed out: the pull runs and the
-  response carries `timed_out: true`. A wait that ends in `context.Canceled` means the
-  client is gone or the daemon is stopping: the handler answers `503` and never
-  pulls.
+  timeout it has expired, so the read must not use it.
+- A wait that ends in `context.DeadlineExceeded` timed out, and the read runs anyway: a
+  pull's response carries `timed_out: true`, and a log's carries whatever is there,
+  usually nothing. A wait that ends in `context.Canceled` means the client is gone or
+  the daemon is stopping: the handler answers `503` and never reads.
 
 That last rule is presence. A worker whose process dies mid-wait closes its connection,
 its wait is cancelled before the pull, and its cursor does not move, so a dead worker
@@ -631,6 +636,23 @@ never consumes messages. It is why the daemon exists.
 
 `timed_out` lives in `server.PullResponse`, which embeds `store.PullResult`. Waiting is
 a daemon concept; the store never learns that anyone waited.
+
+### Following the log
+
+`bro log --follow` is a long poll. The client prints what it has, then asks for the
+messages after the last one it printed, with `wait_ms` set. The handler holds the
+request until the workspace has something newer, or answers with nothing when the wait
+runs out, and the client asks again from the last id it printed. A quiet room costs
+one open request, not a polling loop.
+
+Each request is an ordinary request and response, so a follow survives a daemon handoff
+the way a pull does: the retiring daemon cancels the wait and answers `503`, and the
+client's retry reaches the next daemon. A streaming response would end at every
+handoff.
+
+`followLog` returns `nil` once its context has ended: an error that arrives after
+cancellation is how the loop learns to stop, not a failure. From a terminal, Ctrl-C
+ends the process the way it ends `tail -f`.
 
 ## Testing
 
@@ -661,8 +683,8 @@ hub that code review does not.
   already.
 - **Auto-registration on first `tell`.** See "sending to an unknown mailbox".
 
-`unregister`, `list`, and `log --follow` are not built. Each is easy, and none is on the
-critical path for proving the idea works. `register`, `tell`, `pull`, `log`, and `close`
+`unregister` and `list` are not built. Each is easy, and neither is on the critical
+path for proving the idea works. `register`, `tell`, `pull`, `log`, and `close`
 are the set that has to exist.
 
 ## Open questions

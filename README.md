@@ -73,6 +73,8 @@ $ echo $?
 | `bro pull --peek` / `--since N` / `--last N` | Read without moving the cursor: from it, after message `N`, or the last `N` |
 | `bro pull --json` | Print the pull as JSON, with `latest_id`, `unread_count`, `closed` and `timed_out` |
 | `bro log` | Print the whole workspace transcript |
+| `bro log --last N` / `--since N` | Print the last `N` messages, or those after message `N` |
+| `bro log --follow` | Keep printing new messages as they arrive, until interrupted. Combines with `--last` and `--since` |
 | `bro close [MESSAGE]` | End the unit. `MESSAGE` defaults to "unit complete" |
 | `bro hook-start`, `bro pull --wait D --hook` | Claude Code hooks; they read the hook's JSON on stdin |
 | `bro daemon` | Run the daemon. The first command that needs one starts it |
@@ -125,6 +127,9 @@ To use it in another project:
    ```
 
 5. Ask it to use the bro-orchestrate skill for a task that splits into pieces.
+
+To watch the workers talk, run `BRO_WORKSPACE=feature-x bro log --last 30 --follow` in
+another terminal.
 
 Workers inherit the session's environment, so `BRO_WORKSPACE` reaches them. Leaving
 `BRO_IDENTITY` unset makes a worker that forgets `--as` fail instead of posting as the
