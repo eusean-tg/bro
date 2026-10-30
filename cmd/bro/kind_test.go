@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"testing"
+
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 func tellKind(t *testing.T, args ...string) (kinds []string, err error) {
@@ -17,7 +19,7 @@ func tellKind(t *testing.T, args ...string) (kinds []string, err error) {
 	var out bytes.Buffer
 	err = runTell(t.Context(), clientFor(t, s), cfg, &out, args)
 
-	msgs, lerr := s.Log(t.Context(), "alpha")
+	msgs, lerr := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if lerr != nil {
 		t.Fatalf("Log: %v", lerr)
 	}

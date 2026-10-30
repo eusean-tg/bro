@@ -137,7 +137,7 @@ func TestTellRejectsAnUnregisteredSender(t *testing.T) {
 		t.Fatalf("Tell error = %v, want ErrNoMailbox", err)
 	}
 
-	msgs, err := s.Log(ctx, "alpha")
+	msgs, err := s.Log(ctx, "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

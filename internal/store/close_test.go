@@ -36,7 +36,7 @@ func TestCloseWritesAControlMessage(t *testing.T) {
 		t.Fatalf("CloseWorkspace: %v", err)
 	}
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestCloseByAnUnregisteredSenderIsErrNoMailbox(t *testing.T) {
 	if res := pullClosed(t, s, "alpha", "reader", store.PullOptions{}); res.Closed {
 		t.Error("a rejected close still closed the workspace")
 	}
-	if msgs, _ := s.Log(t.Context(), "alpha"); len(msgs) != 0 {
+	if msgs, _ := s.Log(t.Context(), "alpha", store.LogOptions{}); len(msgs) != 0 {
 		t.Errorf("a rejected close stored %d messages", len(msgs))
 	}
 }

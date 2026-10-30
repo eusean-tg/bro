@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 // postCancelled sends a request whose context is already cancelled, as every
@@ -39,7 +41,7 @@ func TestARequestCancelledByShutdownIs503(t *testing.T) {
 		wantError(t, postCancelled(h, c.path, c.body), http.StatusServiceUnavailable)
 	}
 
-	msgs, err := st.Log(t.Context(), "alpha")
+	msgs, err := st.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

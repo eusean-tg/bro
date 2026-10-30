@@ -70,7 +70,32 @@ func (sv *server) log(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgs, err := sv.st.Log(r.Context(), body.Workspace)
+	if body.WaitMS > 0 {
+		ready := func(ctx context.Context) (bool, error) {
+			msgs, err := sv.st.Log(ctx, body.Workspace, store.LogOptions{After: body.After, Last: 1})
+			if err != nil {
+				return false, err
+			}
+
+			return len(msgs) > 0, nil
+		}
+
+		err := sv.waitWithin(
+			r.Context(),
+			time.Duration(body.WaitMS)*time.Millisecond,
+			body.Workspace,
+			ready,
+		)
+
+		switch {
+		case err == nil, errors.Is(err, context.DeadlineExceeded):
+		default:
+			writeError(w, err)
+			return
+		}
+	}
+
+	msgs, err := sv.st.Log(r.Context(), body.Workspace, store.LogOptions{After: body.After, Last: body.Last})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -102,13 +127,17 @@ func (sv *server) pull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ready := func(ctx context.Context) (bool, error) {
+		return sv.st.Wakeable(ctx, body.Workspace, body.Me)
+	}
+
 	timedOut := false
 	if body.WaitMS > 0 {
 		err := sv.waitWithin(
 			r.Context(),
 			time.Duration(body.WaitMS)*time.Millisecond,
 			body.Workspace,
-			body.Me,
+			ready,
 		)
 
 		switch {
@@ -152,15 +181,20 @@ func (sv *server) close(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, TellResponse{ID: id})
 }
 
-func (sv *server) waitWithin(parent context.Context, d time.Duration, ws, me string) error {
+func (sv *server) waitWithin(
+	parent context.Context,
+	d time.Duration,
+	ws string,
+	ready func(context.Context) (bool, error),
+) error {
 	ctx, cancel := context.WithTimeout(parent, d)
 	defer cancel()
 
-	return sv.wait(ctx, ws, me)
+	return sv.wait(ctx, ws, ready)
 }
 
-// wait blocks until ws has an unread message that mentions me, or ctx ends.
-func (sv *server) wait(ctx context.Context, ws, me string) error {
+// blocks until ready reports true, or ctx ends
+func (sv *server) wait(ctx context.Context, ws string, ready func(context.Context) (bool, error)) error {
 	wake, unsub := sv.hub.Subscribe(ws)
 	defer unsub()
 
@@ -168,7 +202,7 @@ func (sv *server) wait(ctx context.Context, ws, me string) error {
 		// Subscribed before checking: a write that commits after this check
 		// has already rung wake, so it cannot fall between the check and the
 		// select below.
-		ok, err := sv.st.Wakeable(ctx, ws, me)
+		ok, err := ready(ctx)
 		if err != nil || ok {
 			return err
 		}

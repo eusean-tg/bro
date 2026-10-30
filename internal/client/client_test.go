@@ -99,7 +99,7 @@ func TestLogReturnsTheMessagesInOrder(t *testing.T) {
 		}
 	}
 
-	msgs, err := c.Log(t.Context(), "alpha")
+	msgs, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestLogReturnsTheMessagesInOrder(t *testing.T) {
 func TestLogOfAnEmptyWorkspaceIsEmpty(t *testing.T) {
 	_, c := newClient(t)
 
-	msgs, err := c.Log(t.Context(), "alpha")
+	msgs, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestAnUnexpectedStatusCarriesTheServersMessage(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"disk on fire"}`))
 	})
 
-	_, err := c.Log(t.Context(), "alpha")
+	_, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err == nil {
 		t.Fatal("Log succeeded against a 500")
 	}
@@ -245,7 +245,7 @@ func TestEveryRequestIsAVersionedPOST(t *testing.T) {
 	})
 	c.Version = "v-under-test"
 
-	if _, err := c.Log(t.Context(), "alpha"); err != nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Fatalf("Log: %v", err)
 	}
 	if method != http.MethodPost || path != "/log" {
@@ -261,7 +261,7 @@ func TestCallsHonorTheContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, err := c.Log(ctx, "alpha")
+	_, err := c.Log(ctx, "alpha", store.LogOptions{}, 0)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v, want context.Canceled", err)
 	}
@@ -296,7 +296,7 @@ func TestNewDialsTheUnixSocket(t *testing.T) {
 	t.Cleanup(func() { srv.Close() })
 
 	c := client.New(sock, "", testVersion)
-	msgs, err := c.Log(t.Context(), "alpha")
+	msgs, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log over %s: %v", sock, err)
 	}

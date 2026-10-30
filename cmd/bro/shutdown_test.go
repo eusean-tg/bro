@@ -49,7 +49,7 @@ func TestAWaitMovesToTheNextDaemon(t *testing.T) {
 
 	// Stop the daemon under the waiter. A request from a version no daemon
 	// has retires it, and a client with no executable never respawns it.
-	_, _ = client.New(sock, "", "stop").Log(ctx, "")
+	_, _ = client.New(sock, "", "stop").Log(ctx, "", store.LogOptions{}, 0)
 
 	select {
 	case r := <-done:

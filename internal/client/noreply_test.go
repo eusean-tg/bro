@@ -73,7 +73,7 @@ func TestARequestDroppedByADaemonGoingAwayIsRetried(t *testing.T) {
 				emptyLog, // the next daemon
 			))
 
-			if _, err := c.Log(t.Context(), "alpha"); err != nil {
+			if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 				t.Fatalf("Log = %v, want the retry after the dropped request to reach the next daemon", err)
 			}
 			if n := srv.n(); n != 3 {

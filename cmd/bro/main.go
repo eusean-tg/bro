@@ -273,7 +273,7 @@ func printMessages(out io.Writer, msgs []store.Message) {
 }
 
 func runLog(ctx context.Context, c *client.Client, cfg Config, out io.Writer) error {
-	msgs, err := c.Log(ctx, cfg.Workspace)
+	msgs, err := c.Log(ctx, cfg.Workspace, store.LogOptions{}, 0)
 	if err != nil {
 		return fmt.Errorf("log messages: %w", err)
 	}

@@ -14,7 +14,7 @@ func TestTellSendsTheKind(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := st.Log(t.Context(), "alpha")
+	msgs, err := st.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

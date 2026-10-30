@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/eusean-tg/bro/internal/client"
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 func writeFile(t *testing.T, content string) string {
@@ -118,10 +119,10 @@ func TestACurrentDaemonServesAnOlderClient(t *testing.T) {
 	// A worker started before the rebuild still sends the old version. Its
 	// client has no exe, so it cannot spawn: if the daemon retired, the
 	// call fails instead of quietly reaching a replacement.
-	if _, err := client.New(sock, "", "old").Log(t.Context(), "alpha"); err != nil {
+	if _, err := client.New(sock, "", "old").Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Fatalf("the current daemon refused an older client: %v", err)
 	}
-	if _, err := client.New(sock, "", cur).Log(t.Context(), "alpha"); err != nil {
+	if _, err := client.New(sock, "", cur).Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Errorf("the current daemon stopped serving after an older client's request: %v", err)
 	}
 }

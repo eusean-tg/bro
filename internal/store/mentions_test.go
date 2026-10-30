@@ -122,7 +122,7 @@ func TestTellStoresNothingWhenOneRecipientIsUnknown(t *testing.T) {
 		t.Fatal("Tell succeeded with an unknown recipient, want an error")
 	}
 
-	msgs, err := s.Log(ctx, "alpha")
+	msgs, err := s.Log(ctx, "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestLogLeavesMentionedUnset(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Log(ctx, "alpha")
+	msgs, err := s.Log(ctx, "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

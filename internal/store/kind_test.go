@@ -21,7 +21,7 @@ func TestTellStoresTheKind(t *testing.T) {
 	tell(t, s, "alpha", "writer", "a note")
 	control(t, s, "alpha", "writer", "a control")
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestTellRejectsAnUnknownKind(t *testing.T) {
 		}
 	}
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 func TestRunTellWritesIDAndStoresMessage(t *testing.T) {
@@ -26,7 +28,7 @@ func TestRunTellWritesIDAndStoresMessage(t *testing.T) {
 		t.Fatalf("runTell wrote %q, want a message id", out.String())
 	}
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -59,7 +61,7 @@ func TestRunTellWritesToTheGivenWorkspace(t *testing.T) {
 		t.Fatalf("runTell: %v", err)
 	}
 
-	other, err := s.Log(t.Context(), "beta")
+	other, err := s.Log(t.Context(), "beta", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -94,7 +96,7 @@ func TestRunTellRejectsBadInput(t *testing.T) {
 			if out.Len() != 0 {
 				t.Errorf("wrote %q on the error path, want nothing", out.String())
 			}
-			msgs, err := s.Log(t.Context(), "alpha")
+			msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 			if err != nil {
 				t.Fatalf("Log: %v", err)
 			}

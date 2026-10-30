@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/eusean-tg/bro/internal/server"
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 type recorder struct {
@@ -50,7 +51,7 @@ func TestA412IsRetriedWithTheFullRequest(t *testing.T) {
 	var rec recorder
 	c := clientFor(t, retiring(1, &rec))
 
-	if _, err := c.Log(t.Context(), "alpha"); err != nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Fatalf("Log after one 412: %v", err)
 	}
 
@@ -68,7 +69,7 @@ func TestRetriesAfter412AreBounded(t *testing.T) {
 	c := clientFor(t, retiring(1000, &rec))
 
 	start := time.Now()
-	if _, err := c.Log(t.Context(), "alpha"); err == nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err == nil {
 		t.Fatal("Log succeeded against a server that always answers 412")
 	}
 	if n := len(rec.all()); n < 2 || n > 10 {

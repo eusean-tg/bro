@@ -37,7 +37,7 @@ func TestRunCloseWritesTheIDAndClosesTheUnit(t *testing.T) {
 		t.Fatalf("runClose wrote %q, want the close message's id", out.String())
 	}
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestRunCloseTakesAMessage(t *testing.T) {
 	if err := runClose(t.Context(), clientFor(t, s), closer, &out, []string{"auth refactor merged"}); err != nil {
 		t.Fatalf("runClose: %v", err)
 	}
-	msgs, _ := s.Log(t.Context(), "alpha")
+	msgs, _ := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if len(msgs) != 1 || msgs[0].Body != "auth refactor merged" {
 		t.Errorf("stored %+v, want the given message", msgs)
 	}
@@ -67,7 +67,7 @@ func TestRunCloseRequiresAnIdentity(t *testing.T) {
 	if err := runClose(t.Context(), clientFor(t, s), Config{Workspace: "alpha"}, &out, nil); err == nil {
 		t.Error("runClose succeeded with no identity")
 	}
-	if msgs, _ := s.Log(t.Context(), "alpha"); len(msgs) != 0 {
+	if msgs, _ := s.Log(t.Context(), "alpha", store.LogOptions{}); len(msgs) != 0 {
 		t.Errorf("a rejected close stored %d messages", len(msgs))
 	}
 }

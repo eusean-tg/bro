@@ -50,7 +50,7 @@ func TestAWaitIsWokenByAControlMessage(t *testing.T) {
 		st, h := newServer(t)
 		room(t, st)
 
-		done := pulling(t.Context(), h, waitBody("reader", tenMinutes, ""))
+		done := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, ""))
 		answered(done)
 		wantStatus(t, post(t, h, "/tell", `{"workspace":"alpha","sender":"writer","body":"stop","kind":"control"}`), http.StatusOK)
 

@@ -95,7 +95,7 @@ func TestTellStoresTheMessageAndReturnsItsID(t *testing.T) {
 		t.Fatalf("id = %d, want a positive id", got.ID)
 	}
 
-	msgs, err := st.Log(t.Context(), "alpha")
+	msgs, err := st.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

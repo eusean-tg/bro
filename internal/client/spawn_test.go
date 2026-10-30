@@ -139,7 +139,7 @@ func TestACallSpawnsTheDaemonWhenNoSocketExists(t *testing.T) {
 	sock, spawnLog, exe := spawnEnv(t, "serve")
 	c := client.New(sock, exe, testVersion)
 
-	msgs, err := c.Log(t.Context(), "alpha")
+	msgs, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log with no daemon running: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestACallSpawnsTheDaemonOverAStaleSocketFile(t *testing.T) {
 	l.Close()
 
 	c := client.New(sock, exe, testVersion)
-	if _, err := c.Log(t.Context(), "alpha"); err != nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Fatalf("Log over a stale socket file: %v", err)
 	}
 }
@@ -181,7 +181,7 @@ func TestLaterCallsReuseTheSpawnedDaemon(t *testing.T) {
 	}
 
 	// A second client, as a second CLI invocation would be.
-	msgs, err := client.New(sock, exe, testVersion).Log(ctx, "alpha")
+	msgs, err := client.New(sock, exe, testVersion).Log(ctx, "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestConcurrentCallsAllReachADaemon(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, errs[i] = client.New(sock, exe, testVersion).Log(t.Context(), "alpha")
+			_, errs[i] = client.New(sock, exe, testVersion).Log(t.Context(), "alpha", store.LogOptions{}, 0)
 		}()
 	}
 	wg.Wait()
@@ -219,7 +219,7 @@ func TestACallGivesUpWhenTheDaemonNeverListens(t *testing.T) {
 	c := client.New(sock, exe, testVersion)
 
 	start := time.Now()
-	_, err := c.Log(t.Context(), "alpha")
+	_, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0)
 	if err == nil {
 		t.Fatal("Log succeeded with no daemon listening")
 	}
@@ -239,7 +239,7 @@ func TestACallStopsWaitingWhenItsContextEnds(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := c.Log(ctx, "alpha")
+	_, err := c.Log(ctx, "alpha", store.LogOptions{}, 0)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -253,7 +253,7 @@ func TestACallFailsAtOnceWhenTheDaemonCannotStart(t *testing.T) {
 	c := client.New(sock, filepath.Join(t.TempDir(), "no-such-bro"), testVersion)
 
 	start := time.Now()
-	if _, err := c.Log(t.Context(), "alpha"); err == nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err == nil {
 		t.Fatal("Log succeeded with an executable that does not exist")
 	}
 	if elapsed := time.Since(start); elapsed > time.Second {
@@ -265,7 +265,7 @@ func TestAnEmptyExecutableNeverSpawns(t *testing.T) {
 	sock, spawnLog, _ := spawnEnv(t, "serve")
 	c := client.New(sock, "", testVersion)
 
-	if _, err := c.Log(t.Context(), "alpha"); err == nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err == nil {
 		t.Fatal("Log succeeded with no daemon and no executable to spawn")
 	}
 	if n := spawns(t, spawnLog); n != 0 {

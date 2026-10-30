@@ -153,9 +153,19 @@ func (c *Client) Tell(
 	return res.ID, nil
 }
 
-func (c *Client) Log(ctx context.Context, ws string) ([]store.Message, error) {
+func (c *Client) Log(
+	ctx context.Context,
+	ws string,
+	opts store.LogOptions,
+	wait time.Duration,
+) ([]store.Message, error) {
 	var res server.LogResponse
-	req := server.LogRequest{Workspace: ws}
+	req := server.LogRequest{
+		Workspace: ws,
+		After:     opts.After,
+		Last:      opts.Last,
+		WaitMS:    wait.Milliseconds(),
+	}
 
 	if err := c.do(ctx, "/log", req, &res); err != nil {
 		return nil, err

@@ -109,7 +109,7 @@ func TestLogReturnsMessagesInIDOrder(t *testing.T) {
 		}
 	}
 
-	msgs, err := s.Log(ctx, "ws")
+	msgs, err := s.Log(ctx, "ws", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestTellRecordsSenderKindAndInjectedTime(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Log(ctx, "ws")
+	msgs, err := s.Log(ctx, "ws", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestLogIsScopedToOneWorkspace(t *testing.T) {
 		t.Fatalf("Tell: %v", err)
 	}
 
-	msgs, err := s.Log(ctx, "alpha")
+	msgs, err := s.Log(ctx, "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestLogIsScopedToOneWorkspace(t *testing.T) {
 func TestLogOnEmptyWorkspaceReturnsNoMessagesAndNoError(t *testing.T) {
 	s := newStore(t)
 
-	msgs, err := s.Log(t.Context(), "never-used")
+	msgs, err := s.Log(t.Context(), "never-used", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}

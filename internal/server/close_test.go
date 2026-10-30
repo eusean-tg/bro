@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/eusean-tg/bro/internal/server"
+	"github.com/eusean-tg/bro/internal/store"
 )
 
 func TestCloseReturnsTheIDOfTheControlMessage(t *testing.T) {
@@ -17,7 +18,7 @@ func TestCloseReturnsTheIDOfTheControlMessage(t *testing.T) {
 	wantStatus(t, rec, http.StatusOK)
 	id := decode[server.TellResponse](t, rec).ID
 
-	msgs, err := st.Log(t.Context(), "alpha")
+	msgs, err := st.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -55,7 +56,7 @@ func TestAWaitIsWokenByAClose(t *testing.T) {
 		st, h := newServer(t)
 		room(t, st)
 
-		done := pulling(t.Context(), h, waitBody("reader", tenMinutes, ""))
+		done := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, ""))
 		answered(done)
 		wantStatus(t, post(t, h, "/close", `{"workspace":"alpha","sender":"writer","body":"done"}`), http.StatusOK)
 

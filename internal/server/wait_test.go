@@ -35,23 +35,25 @@ func room(t *testing.T, st *store.Store) {
 }
 
 // say posts a message through the handler, as a client's tell would, so the
-// tell handler's publish runs.
-func say(t *testing.T, h http.Handler, sender, body string, to ...string) {
+// tell handler's publish runs. It returns the message's id.
+func say(t *testing.T, h http.Handler, sender, body string, to ...string) int64 {
 	t.Helper()
 
 	b, err := json.Marshal(server.TellRequest{Workspace: "alpha", Sender: sender, Body: body, To: to})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	wantStatus(t, post(t, h, "/tell", string(b)), http.StatusOK)
+	rec := post(t, h, "/tell", string(b))
+	wantStatus(t, rec, http.StatusOK)
+	return decode[server.TellResponse](t, rec).ID
 }
 
-// pulling starts a pull in its own goroutine, under ctx, and returns the
-// channel its response arrives on.
-func pulling(ctx context.Context, h http.Handler, body string) <-chan *httptest.ResponseRecorder {
+// sending starts a request to path in its own goroutine, under ctx, and
+// returns the channel its response arrives on.
+func sending(ctx context.Context, h http.Handler, path, body string) <-chan *httptest.ResponseRecorder {
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/pull", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Bro-Version", testVersion)
 		rec := httptest.NewRecorder()
@@ -62,7 +64,7 @@ func pulling(ctx context.Context, h http.Handler, body string) <-chan *httptest.
 }
 
 // answered waits for every goroutine in the bubble to settle, then reports
-// the response if the pull has returned, or nil if it is still waiting.
+// the response if the request has returned, or nil if it is still waiting.
 func answered(done <-chan *httptest.ResponseRecorder) *httptest.ResponseRecorder {
 	synctest.Wait()
 	select {
@@ -113,7 +115,7 @@ func TestWaitBlocksUntilAMentionArrives(t *testing.T) {
 		st, h := newServer(t)
 		room(t, st)
 
-		done := pulling(t.Context(), h, waitBody("reader", tenMinutes, ""))
+		done := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, ""))
 		if rec := answered(done); rec != nil {
 			t.Fatalf("pull returned before anything was said: %d %s", rec.Code, rec.Body.String())
 		}
@@ -141,7 +143,7 @@ func TestWaitSleepsThroughAmbientMessages(t *testing.T) {
 		st, h := newServer(t)
 		room(t, st)
 
-		done := pulling(t.Context(), h, waitBody("reader", tenMinutes, ""))
+		done := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, ""))
 		answered(done)
 		say(t, h, "writer", "to the room")
 		say(t, h, "writer", "for someone else", "other")
@@ -161,8 +163,8 @@ func TestAWakeForOneReaderDoesNotEndAnothersWait(t *testing.T) {
 		// Both waiters share the workspace, so the hub wakes both. Only the
 		// reader's re-check finds a mention; other's finds nothing and must
 		// go back to waiting.
-		reader := pulling(t.Context(), h, waitBody("reader", tenMinutes, ""))
-		other := pulling(t.Context(), h, waitBody("other", tenMinutes, ""))
+		reader := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, ""))
+		other := sending(t.Context(), h, "/pull", waitBody("other", tenMinutes, ""))
 		answered(reader)
 		say(t, h, "writer", "for you", "reader")
 
@@ -214,7 +216,7 @@ func TestAWaitWithPeekLeavesTheCursor(t *testing.T) {
 		st, h := newServer(t)
 		room(t, st)
 
-		done := pulling(t.Context(), h, waitBody("reader", tenMinutes, `,"peek":true`))
+		done := sending(t.Context(), h, "/pull", waitBody("reader", tenMinutes, `,"peek":true`))
 		answered(done)
 		say(t, h, "writer", "for you", "reader")
 		rec := answered(done)
@@ -238,7 +240,7 @@ func TestACancelledWaitIs503AndLeavesTheCursor(t *testing.T) {
 		// The client disconnecting, or the daemon stopping, both arrive as
 		// the request's context being cancelled.
 		ctx, cancel := context.WithCancel(t.Context())
-		done := pulling(ctx, h, waitBody("reader", tenMinutes, ""))
+		done := sending(ctx, h, "/pull", waitBody("reader", tenMinutes, ""))
 		answered(done)
 		say(t, h, "writer", "to the room")
 		cancel()

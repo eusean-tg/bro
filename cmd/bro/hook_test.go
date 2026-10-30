@@ -165,7 +165,7 @@ func TestHookPostsTheWorkersSummary(t *testing.T) {
 
 	d, _ := hook(t, s, cfg, stopInput("refactored the auth middleware"), "50ms")
 
-	msgs, err := s.Log(t.Context(), "alpha")
+	msgs, err := s.Log(t.Context(), "alpha", store.LogOptions{})
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestHookPostsNoSummaryForABlankMessage(t *testing.T) {
 
 	hook(t, s, cfg, stopInput(" \n "), "50ms")
 
-	if msgs, _ := s.Log(t.Context(), "alpha"); len(msgs) != 0 {
+	if msgs, _ := s.Log(t.Context(), "alpha", store.LogOptions{}); len(msgs) != 0 {
 		t.Errorf("a blank last_assistant_message posted %+v", msgs)
 	}
 }
@@ -224,7 +224,7 @@ func TestHookTakesOnlyWait(t *testing.T) {
 	s, cfg, _ := hookRoom(t)
 
 	for _, args := range [][]string{
-		{"--hook"},                            // answers at once; the block cap runs out in seconds
+		{"--hook"},                             // answers at once; the block cap runs out in seconds
 		{"--wait", "50ms", "--hook", "--peek"}, // redelivers the same messages on every stop
 		{"--wait", "50ms", "--hook", "--json"}, // the decision is the output
 	} {

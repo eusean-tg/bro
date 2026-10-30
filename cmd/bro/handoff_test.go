@@ -40,7 +40,7 @@ func TestMain(m *testing.M) {
 func retire(t *testing.T, sock string) {
 	t.Helper()
 
-	_, _ = client.New(sock, "", "retire").Log(context.Background(), "")
+	_, _ = client.New(sock, "", "retire").Log(context.Background(), "", store.LogOptions{}, 0)
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
 		if _, err := os.Stat(sock); errors.Is(err, os.ErrNotExist) {
 			return
@@ -73,7 +73,7 @@ func TestANewerClientReplacesAnOlderDaemon(t *testing.T) {
 	// The binary is rebuilt. The new client's first call meets the old
 	// daemon, which retires; the retry spawns a daemon from the new build.
 	t.Setenv("BRO_TEST_DAEMON_VERSION", "new")
-	msgs, err := client.New(sock, exe, "new").Log(ctx, "alpha")
+	msgs, err := client.New(sock, exe, "new").Log(ctx, "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log via the new build: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestANewerClientReplacesAnOlderDaemon(t *testing.T) {
 
 	// The daemon now serving is the new one: a client that cannot spawn
 	// reaches it with the new version, and no 412 intervenes.
-	if _, err := client.New(sock, "", "new").Log(ctx, "alpha"); err != nil {
+	if _, err := client.New(sock, "", "new").Log(ctx, "alpha", store.LogOptions{}, 0); err != nil {
 		t.Errorf("the new daemon is not the one serving: %v", err)
 	}
 }
@@ -99,7 +99,7 @@ func TestTheHandoffSurvivesRepeatedRebuilds(t *testing.T) {
 
 	for _, v := range []string{"v1", "v2", "v3", "v4", "v5"} {
 		t.Setenv("BRO_TEST_DAEMON_VERSION", v)
-		if _, err := client.New(sock, exe, v).Log(t.Context(), "alpha"); err != nil {
+		if _, err := client.New(sock, exe, v).Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 			t.Fatalf("Log at %s: %v", v, err)
 		}
 	}

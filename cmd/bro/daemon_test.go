@@ -116,7 +116,7 @@ func TestDaemonServesOverTheSocket(t *testing.T) {
 	if _, err := c.Tell(ctx, "alpha", "worker", "over the socket", nil, store.KindNote); err != nil {
 		t.Fatalf("Tell: %v", err)
 	}
-	msgs, err := c.Log(ctx, "alpha")
+	msgs, err := c.Log(ctx, "alpha", store.LogOptions{}, 0)
 	if err != nil {
 		t.Fatalf("Log: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestASecondDaemonExitsQuietlyAndLeavesTheFirstServing(t *testing.T) {
 	}
 
 	c := client.New(sock, "", "test")
-	if _, err := c.Log(t.Context(), "alpha"); err != nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Errorf("first daemon unreachable after the second exited: %v", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestDaemonReplacesAStaleSocketFile(t *testing.T) {
 	startDaemon(t, sock, db)
 
 	c := client.New(sock, "", "test")
-	if _, err := c.Log(t.Context(), "alpha"); err != nil {
+	if _, err := c.Log(t.Context(), "alpha", store.LogOptions{}, 0); err != nil {
 		t.Errorf("Log after replacing a stale socket: %v", err)
 	}
 }

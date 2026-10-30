@@ -20,6 +20,9 @@ type TellResponse struct {
 
 type LogRequest struct {
 	Workspace string `json:"workspace"`
+	After     int64  `json:"after"`
+	Last      int    `json:"last"`
+	WaitMS    int64  `json:"wait_ms"`
 }
 
 type LogResponse struct {

@@ -198,8 +198,34 @@ func writeMessage(
 	return id, nil
 }
 
-func (s *Store) Log(ctx context.Context, ws string) ([]Message, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, sender, kind, body, created_at FROM messages WHERE workspace = ? ORDER BY id`, ws)
+type LogOptions struct {
+	After int64
+	Last  int
+}
+
+func (s *Store) Log(ctx context.Context, ws string, opts LogOptions) ([]Message, error) {
+	q := `SELECT id, sender, kind, body, created_at FROM messages WHERE workspace = ?`
+	args := make([]any, 0, 1)
+	args = append(args, ws)
+
+	if opts.After >= 0 {
+		q += ` AND id > ?`
+		args = append(args, opts.After)
+	}
+
+	q += ` ORDER BY id DESC`
+
+	if opts.Last > 0 {
+		q += ` LIMIT ?`
+		args = append(args, opts.Last)
+	}
+
+	outer := `SELECT * FROM (` + q + `) ORDER BY id ASC`
+	rows, err := s.db.QueryContext(
+		ctx,
+		outer,
+		args...,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("query messages: %w", err)
 	}
