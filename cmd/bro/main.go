@@ -140,7 +140,7 @@ func run(args []string) error {
 	case "tell":
 		return runTell(ctx, c, cfg, os.Stdout, rest)
 	case "log":
-		return runLog(ctx, c, cfg, os.Stdout)
+		return runLog(ctx, c, cfg, os.Stdout, rest)
 	case "register":
 		return runRegister(ctx, c, cfg, os.Stdout, rest)
 	case "pull":
@@ -162,8 +162,8 @@ func runTell(
 	rest []string,
 ) error {
 	tell := flag.NewFlagSet("tell", flag.ContinueOnError)
-	toFlag := tell.String("to", "", "name(s) for recipient, comma-separated: alice,bob")
-	kindFlag := tell.String("kind", "note", `kind of message, either "control" or "note"; defaults to "note"`)
+	to := tell.String("to", "", "name(s) for recipient, comma-separated: alice,bob")
+	kind := tell.String("kind", "note", `kind of message, either "control" or "note"; defaults to "note"`)
 
 	if err := tell.Parse(rest); err != nil {
 		return err
@@ -181,12 +181,12 @@ func runTell(
 		return errors.New("tell requires identity")
 	}
 
-	var to []string
-	if *toFlag != "" {
-		to = strings.Split(*toFlag, ",")
+	var recipients []string
+	if *to != "" {
+		recipients = strings.Split(*to, ",")
 	}
 
-	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), to, store.Kind(*kindFlag))
+	id, err := c.Tell(ctx, cfg.Workspace, cfg.Identity, tell.Arg(0), recipients, store.Kind(*kind))
 	if err != nil {
 		return fmt.Errorf("unable to tell: %w", err)
 	}
@@ -272,15 +272,66 @@ func printMessages(out io.Writer, msgs []store.Message) {
 	}
 }
 
-func runLog(ctx context.Context, c *client.Client, cfg Config, out io.Writer) error {
-	msgs, err := c.Log(ctx, cfg.Workspace, store.LogOptions{}, 0)
+func runLog(
+	ctx context.Context,
+	c *client.Client,
+	cfg Config,
+	out io.Writer,
+	rest []string,
+) error {
+	fs := flag.NewFlagSet("log", flag.ContinueOnError)
+	last := fs.Int("last", 0, "show N last messages")
+	since := fs.Int64("since", 0, "start logging after N message ID")
+	follow := fs.Bool("follow", false, "starts following the chat")
+
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+
+	if *last < 0 {
+		return errors.New("last cannot be negative")
+	}
+
+	msgs, err := c.Log(ctx, cfg.Workspace, store.LogOptions{After: *since, Last: *last}, 0)
 	if err != nil {
 		return fmt.Errorf("log messages: %w", err)
 	}
 
 	printMessages(out, msgs)
 
+	if *follow {
+		a := *since
+		if len(msgs) > 0 {
+			a = msgs[len(msgs)-1].ID
+		}
+		return followLog(ctx, c, cfg.Workspace, a, out)
+	}
+
 	return nil
+}
+
+func followLog(
+	ctx context.Context,
+	c *client.Client,
+	ws string,
+	after int64,
+	out io.Writer,
+) error {
+	for {
+		msgs, err := c.Log(ctx, ws, store.LogOptions{After: after}, time.Minute)
+		if ctx.Err() != nil {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("follow: %w", err)
+		}
+
+		printMessages(out, msgs)
+
+		if len(msgs) > 0 {
+			after = msgs[len(msgs)-1].ID
+		}
+	}
 }
 
 func randomName() string {

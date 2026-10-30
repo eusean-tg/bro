@@ -43,7 +43,7 @@ func TestRunLogWritesEveryMessageInOrder(t *testing.T) {
 	)
 
 	var out bytes.Buffer
-	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "alpha"}, &out); err != nil {
+	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "alpha"}, &out, nil); err != nil {
 		t.Fatalf("runLog: %v", err)
 	}
 	got := out.String()
@@ -76,7 +76,7 @@ func TestRunLogIsScopedToOneWorkspace(t *testing.T) {
 	)
 
 	var out bytes.Buffer
-	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "alpha"}, &out); err != nil {
+	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "alpha"}, &out, nil); err != nil {
 		t.Fatalf("runLog: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestRunLogOnEmptyWorkspaceWritesNothing(t *testing.T) {
 	s := seeded(t)
 
 	var out bytes.Buffer
-	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "never-used"}, &out); err != nil {
+	if err := runLog(t.Context(), clientFor(t, s), Config{Workspace: "never-used"}, &out, nil); err != nil {
 		t.Fatalf("runLog: %v", err)
 	}
 	if out.Len() != 0 {

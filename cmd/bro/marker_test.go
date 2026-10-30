@@ -72,7 +72,7 @@ func TestRunLogNeverMarksMentions(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := runLog(ctx, clientFor(t, s), Config{Workspace: "alpha"}, &out); err != nil {
+	if err := runLog(ctx, clientFor(t, s), Config{Workspace: "alpha"}, &out, nil); err != nil {
 		t.Fatalf("runLog: %v", err)
 	}
 

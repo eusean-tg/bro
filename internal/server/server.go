@@ -193,7 +193,9 @@ func (sv *server) waitWithin(
 	return sv.wait(ctx, ws, ready)
 }
 
-// blocks until ready reports true, or ctx ends
+// wait blocks until ready reports true, or until ctx ends. ready runs once
+// at the start and again after every wake for ws. wait returns ready's
+// error, or ctx's error if ctx ends first.
 func (sv *server) wait(ctx context.Context, ws string, ready func(context.Context) (bool, error)) error {
 	wake, unsub := sv.hub.Subscribe(ws)
 	defer unsub()
